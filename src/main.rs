@@ -151,6 +151,20 @@ fn main() {
 		}).collect::<Vec<_>>();
 		scored.sort_by(|kts1, kts2| kts1.2.partial_cmp(&kts2.2).unwrap().reverse());
 		let best = scored.get(0).unwrap();
-		println!("Set 1 Challenge 3: {} (key=0x{:02x})", best.1, best.0);
+		println!("Set 1 Challenge 3: {} (key 0x{:02x})", best.1, best.0);
+	}
+
+	{ // Set 1 Challenge 4
+		let f = std::fs::read_to_string("4.txt").unwrap();
+		let mut scored = f.lines().enumerate().flat_map(|(line_no, line)| {
+			(0..=255).map(move |key| {
+				let pt = xor_decode(&Bytes::from_hex(&line).unwrap(), &Bytes::from_vec(vec![key])).to_string();
+				let score = score_text(&pt);
+				(line_no, key, pt, score)
+			})
+		}).collect::<Vec<_>>();
+		scored.sort_by(|lkts1, lkts2| lkts1.3.partial_cmp(&lkts2.3).unwrap().reverse());
+		let best = scored.get(0).unwrap();
+		println!("Set 1 Challenge 4: {} (line {}, key 0x{:02x})", best.2.trim(), best.0, best.1);
 	}
 }
