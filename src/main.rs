@@ -28,11 +28,11 @@ impl Bytes {
 		Self::from_vec(s.to_owned().into_bytes())
 	}
 
-	pub fn hex(&self) -> String {
+	pub fn to_hex(&self) -> String {
 		hex::encode(&self.bytes)
 	}
 
-	pub fn base64(&self) -> String {
+	pub fn to_base64(&self) -> String {
 		use base64::Engine;
 		base64::engine::general_purpose::STANDARD.encode(&self.bytes)
 	}
@@ -60,13 +60,13 @@ fn xor(b1: &Bytes, b2: &Bytes) -> Bytes {
 	Bytes::from_vec(res)
 }
 
-fn xor_decode(ciphertext: &Bytes, key: &Bytes) -> Bytes {
-	let size = ciphertext.bytes.len();
-	let mut plaintext = Vec::with_capacity(size);
+fn xor_encode(text: &Bytes, key: &Bytes) -> Bytes {
+	let size = text.bytes.len();
+	let mut encoded = Vec::with_capacity(size);
 	for i in 0..size {
-		plaintext.push(ciphertext.bytes[i] ^ key.bytes[i % key.bytes.len()]);
+		encoded.push(text.bytes[i] ^ key.bytes[i % key.bytes.len()]);
 	}
-	Bytes::from_vec(plaintext)
+	Bytes::from_vec(encoded)
 }
 
 fn counts<T, I>(iterator: T) -> HashMap<I, usize>
@@ -136,20 +136,20 @@ fn score_text(text: &str) -> f64 {
 fn main() {
 	{ // Set 1 Challenge 1
 		let num = Bytes::from_hex("49276d206b696c6c696e6720796f757220627261696e206c696b65206120706f69736f6e6f7573206d757368726f6f6d").unwrap();
-		assert_eq!("SSdtIGtpbGxpbmcgeW91ciBicmFpbiBsaWtlIGEgcG9pc29ub3VzIG11c2hyb29t", num.base64());
-		println!("Set 1 Challenge 1: {}", num.base64());
+		assert_eq!("SSdtIGtpbGxpbmcgeW91ciBicmFpbiBsaWtlIGEgcG9pc29ub3VzIG11c2hyb29t", num.to_base64());
+		println!("Set 1 Challenge 1: {}", num.to_base64());
 	}
 
 	{ // Set 1 Challenge 2
 		let res = xor(&Bytes::from_hex("1c0111001f010100061a024b53535009181c").unwrap(), &Bytes::from_hex("686974207468652062756c6c277320657965").unwrap());
-		assert_eq!("746865206b696420646f6e277420706c6179", res.hex());
-		println!("Set 1 Challenge 2: {}", res.hex());
+		assert_eq!("746865206b696420646f6e277420706c6179", res.to_hex());
+		println!("Set 1 Challenge 2: {}", res.to_hex());
 	}
 
 	{ // Set 1 Challenge 3
 		let ciphertext = Bytes::from_hex("1b37373331363f78151b7f2b783431333d78397828372d363c78373e783a393b3736").unwrap();
 		let mut scored = (0..=255).map(|key| {
-			let plaintext = xor_decode(&ciphertext, &Bytes::from_vec(vec![key])).to_string();
+			let plaintext = xor_encode(&ciphertext, &Bytes::from_vec(vec![key])).to_string();
 			let score = score_text(&plaintext);
 			(key, plaintext, score)
 		}).collect::<Vec<_>>();
@@ -162,7 +162,7 @@ fn main() {
 		let f = std::fs::read_to_string("4.txt").unwrap();
 		let mut scored = f.lines().enumerate().flat_map(|(line_no, line)| {
 			(0..=255).map(move |key| {
-				let pt = xor_decode(&Bytes::from_hex(&line).unwrap(), &Bytes::from_vec(vec![key])).to_string();
+				let pt = xor_encode(&Bytes::from_hex(&line).unwrap(), &Bytes::from_vec(vec![key])).to_string();
 				let score = score_text(&pt);
 				(line_no, key, pt, score)
 			})
@@ -175,8 +175,8 @@ fn main() {
 	{ // Set 1 Challenge 5
 		let plaintext = Bytes::from_str("Burning 'em, if you ain't quick and nimble\nI go crazy when I hear a cymbal");
 		let key = Bytes::from_str("ICE");
-		let ciphertext = xor_decode(&plaintext, &key);
-		println!("Set 1 Challenge 5: {}", ciphertext.hex());
-		assert_eq!("0b3637272a2b2e63622c2e69692a23693a2a3c6324202d623d63343c2a26226324272765272a282b2f20430a652e2c652a3124333a653e2b2027630c692b20283165286326302e27282f", ciphertext.hex());
+		let ciphertext = xor_encode(&plaintext, &key);
+		println!("Set 1 Challenge 5: {}", ciphertext.to_hex());
+		assert_eq!("0b3637272a2b2e63622c2e69692a23693a2a3c6324202d623d63343c2a26226324272765272a282b2f20430a652e2c652a3124333a653e2b2027630c692b20283165286326302e27282f", ciphertext.to_hex());
 	}
 }
