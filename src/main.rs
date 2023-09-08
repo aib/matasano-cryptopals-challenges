@@ -24,6 +24,10 @@ impl Bytes {
 		}).map(Self::from_vec)
 	}
 
+	pub fn from_str(s: &str) -> Self {
+		Self::from_vec(s.to_owned().into_bytes())
+	}
+
 	pub fn hex(&self) -> String {
 		hex::encode(&self.bytes)
 	}
@@ -166,5 +170,13 @@ fn main() {
 		scored.sort_by(|lkts1, lkts2| lkts1.3.partial_cmp(&lkts2.3).unwrap().reverse());
 		let best = scored.get(0).unwrap();
 		println!("Set 1 Challenge 4: {} (line {}, key 0x{:02x})", best.2.trim(), best.0, best.1);
+	}
+
+	{ // Set 1 Challenge 5
+		let plaintext = Bytes::from_str("Burning 'em, if you ain't quick and nimble\nI go crazy when I hear a cymbal");
+		let key = Bytes::from_str("ICE");
+		let ciphertext = xor_decode(&plaintext, &key);
+		println!("Set 1 Challenge 5: {}", ciphertext.hex());
+		assert_eq!("0b3637272a2b2e63622c2e69692a23693a2a3c6324202d623d63343c2a26226324272765272a282b2f20430a652e2c652a3124333a653e2b2027630c692b20283165286326302e27282f", ciphertext.hex());
 	}
 }
