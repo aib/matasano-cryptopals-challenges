@@ -7,6 +7,12 @@ enum HexError {
 	OddLength,
 }
 
+#[derive(Debug)]
+enum Base64Error {
+	InvalidCharacter,
+	InvalidEnding,
+}
+
 struct Bytes {
 	bytes: Vec<u8>,
 }
@@ -21,6 +27,17 @@ impl Bytes {
 			hex::FromHexError::InvalidHexCharacter {..} => HexError::InvalidCharacter,
 			hex::FromHexError::OddLength                => HexError::OddLength,
 			hex::FromHexError::InvalidStringLength => panic!("Invalid error for hex::decode"),
+		}).map(Self::from_vec)
+	}
+
+	pub fn from_base64(estr: &str) -> Result<Self, Base64Error> {
+		use base64::Engine;
+		let stripped: String = estr.chars().filter(|c| !c.is_whitespace()).collect();
+		base64::engine::general_purpose::STANDARD.decode(&stripped).map_err(|err| match err {
+			base64::DecodeError::InvalidByte(_, _) => Base64Error::InvalidCharacter,
+			base64::DecodeError::InvalidLength |
+			base64::DecodeError::InvalidLastSymbol { .. } |
+			base64::DecodeError::InvalidPadding => Base64Error::InvalidEnding,
 		}).map(Self::from_vec)
 	}
 
@@ -198,5 +215,6 @@ fn main() {
 
 	{ // Set 1 Challenge 6
 		assert_eq!(37, hamming_distance(&Bytes::from_str("this is a test"), &Bytes::from_str("wokka wokka!!!")));
+		let bs = Bytes::from_base64(&std::fs::read_to_string("6.txt").unwrap()).unwrap();
 	}
 }
