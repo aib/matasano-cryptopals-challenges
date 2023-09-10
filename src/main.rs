@@ -133,6 +133,14 @@ fn score_text(text: &str) -> f64 {
 	score
 }
 
+fn hamming_distance(str1: &Bytes, str2: &Bytes) -> usize {
+	let mut distance = 0;
+	for (b1, b2) in std::iter::zip(&str1.bytes, &str2.bytes) {
+		distance += (b1 ^ b2).count_ones() as usize;
+	}
+	distance
+}
+
 fn main() {
 	{ // Set 1 Challenge 1
 		let num = Bytes::from_hex("49276d206b696c6c696e6720796f757220627261696e206c696b65206120706f69736f6e6f7573206d757368726f6f6d").unwrap();
@@ -178,5 +186,9 @@ fn main() {
 		let ciphertext = xor_encode(&plaintext, &key);
 		println!("Set 1 Challenge 5: {}", ciphertext.to_hex());
 		assert_eq!("0b3637272a2b2e63622c2e69692a23693a2a3c6324202d623d63343c2a26226324272765272a282b2f20430a652e2c652a3124333a653e2b2027630c692b20283165286326302e27282f", ciphertext.to_hex());
+	}
+
+	{ // Set 1 Challenge 6
+		assert_eq!(37, hamming_distance(&Bytes::from_str("this is a test"), &Bytes::from_str("wokka wokka!!!")));
 	}
 }
