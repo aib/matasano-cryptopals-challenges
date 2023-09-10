@@ -42,29 +42,37 @@ impl Bytes {
 	}
 }
 
-fn xor(b1: &Bytes, b2: &Bytes) -> Bytes {
-	let size = std::cmp::max(b1.bytes.len(), b2.bytes.len());
-	let pad1 = b2.bytes.len().saturating_sub(b1.bytes.len());
-	let pad2 = b1.bytes.len().saturating_sub(b2.bytes.len());
+impl AsRef<[u8]> for Bytes {
+	fn as_ref(&self) -> &[u8] {
+		&self.bytes
+	}
+}
+
+fn xor<T: AsRef<[u8]>>(b1: T, b2: T) -> Bytes {
+	let (b1, b2) = (b1.as_ref(), b2.as_ref());
+	let size = std::cmp::max(b1.len(), b2.len());
+	let pad1 = b2.len().saturating_sub(b1.len());
+	let pad2 = b1.len().saturating_sub(b2.len());
 
 	let mut res = Vec::with_capacity(size);
 	for i in 0..size {
 		if i < pad1 {
-			res.push(b2.bytes[i]);
+			res.push(b2[i]);
 		} else if i < pad2 {
-			res.push(b1.bytes[i]);
+			res.push(b1[i]);
 		} else {
-			res.push(b1.bytes[i - pad1] ^ b2.bytes[i - pad2]);
+			res.push(b1[i - pad1] ^ b2[i - pad2]);
 		}
 	}
 	Bytes::from_vec(res)
 }
 
-fn xor_encode(text: &Bytes, key: &Bytes) -> Bytes {
-	let size = text.bytes.len();
+fn xor_encode<T: AsRef<[u8]>>(text: T, key: T) -> Bytes {
+	let (text, key) = (text.as_ref(), key.as_ref());
+	let size = text.len();
 	let mut encoded = Vec::with_capacity(size);
 	for i in 0..size {
-		encoded.push(text.bytes[i] ^ key.bytes[i % key.bytes.len()]);
+		encoded.push(text[i] ^ key[i % key.len()]);
 	}
 	Bytes::from_vec(encoded)
 }
@@ -133,9 +141,9 @@ fn score_text(text: &str) -> f64 {
 	score
 }
 
-fn hamming_distance(str1: &Bytes, str2: &Bytes) -> usize {
+fn hamming_distance<T: AsRef<[u8]>>(str1: T, str2: T) -> usize {
 	let mut distance = 0;
-	for (b1, b2) in std::iter::zip(&str1.bytes, &str2.bytes) {
+	for (b1, b2) in std::iter::zip(str1.as_ref(), str2.as_ref()) {
 		distance += (b1 ^ b2).count_ones() as usize;
 	}
 	distance
