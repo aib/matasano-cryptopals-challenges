@@ -211,28 +211,19 @@ fn main() {
 
 	{ // Set 1 Challenge 3
 		let ciphertext = Bytes::from_hex("1b37373331363f78151b7f2b783431333d78397828372d363c78373e783a393b3736").unwrap();
-		let mut scored = (0..=255).map(|key| {
-			let plaintext = xor_encode(&ciphertext, &Bytes::from_vec(vec![key])).to_string();
-			let score = score_text(&plaintext);
-			(key, plaintext, score)
-		}).collect::<Vec<_>>();
-		scored.sort_by(|kts1, kts2| kts1.2.partial_cmp(&kts2.2).unwrap().reverse());
-		let best = scored.get(0).unwrap();
-		println!("Set 1 Challenge 3: {} (key 0x{:02x})", best.1, best.0);
+		let (key, text, _score) = solve_xor(&ciphertext, 1, score_text);
+		println!("Set 1 Challenge 3: {} (key 0x{})", text.to_string(), key.to_hex());
 	}
 
 	{ // Set 1 Challenge 4
 		let f = std::fs::read_to_string("4.txt").unwrap();
-		let mut scored = f.lines().enumerate().flat_map(|(line_no, line)| {
-			(0..=255).map(move |key| {
-				let pt = xor_encode(&Bytes::from_hex(&line).unwrap(), &Bytes::from_vec(vec![key])).to_string();
-				let score = score_text(&pt);
-				(line_no, key, pt, score)
-			})
-		}).collect::<Vec<_>>();
-		scored.sort_by(|lkts1, lkts2| lkts1.3.partial_cmp(&lkts2.3).unwrap().reverse());
-		let best = scored.get(0).unwrap();
-		println!("Set 1 Challenge 4: {} (line {}, key 0x{:02x})", best.2.trim(), best.0, best.1);
+		let mut scored: Vec<_> = f.lines()
+			.map(|l| Bytes::from_hex(l).unwrap())
+			.enumerate().map(|(line_no, line)| (line_no, solve_xor(&line, 1, score_text)))
+			.collect();
+		scored.sort_by(|l_kts1, l_kts2| l_kts1.1.2.partial_cmp(&l_kts2.1.2).unwrap());
+		let (line_no, (key, text, _score)) = scored.pop().unwrap();
+		println!("Set 1 Challenge 4: {} (line {}, key 0x{})", text.to_string().trim(), line_no + 1, key.to_hex());
 	}
 
 	{ // Set 1 Challenge 5
