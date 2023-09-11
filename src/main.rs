@@ -13,6 +13,7 @@ enum Base64Error {
 	InvalidEnding,
 }
 
+#[derive(Debug)]
 struct Bytes {
 	bytes: Vec<u8>,
 }
