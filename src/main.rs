@@ -166,6 +166,36 @@ fn hamming_distance<T: AsRef<[u8]>>(str1: T, str2: T) -> usize {
 	distance
 }
 
+fn solve_xor<T: AsRef<[u8]>, F: Fn(&str) -> f64>(ciphertext: T, keysize: usize, scorer: F) -> (Bytes, Bytes, f64) {
+	if keysize == 0 {
+		return (Bytes::from_vec(vec![]), Bytes::from_vec(vec![]), scorer(""));
+	}
+
+	fn all_keys(size: usize) -> Vec<Vec<u8>> {
+		if size == 0 {
+			vec!(vec!())
+		} else {
+			all_keys(size - 1).iter()
+				.flat_map(|k| (0..=255).map(|n| {
+					let mut k2 = k.clone();
+					k2.push(n);
+					k2
+				}))
+				.collect()
+		}
+	}
+
+	let mut scored: Vec<_> = all_keys(keysize).into_iter().map(|key| {
+		let plaintext = xor_encode(&ciphertext, &key);
+		let score = scorer(&plaintext.to_string());
+		(key, plaintext, score)
+	}).collect();
+	scored.sort_by(|kts1, kts2| kts1.2.partial_cmp(&kts2.2).unwrap());
+
+	let (key, plaintext, score) = scored.pop().unwrap();
+	(Bytes::from_vec(key), plaintext, score)
+}
+
 fn main() {
 	{ // Set 1 Challenge 1
 		let num = Bytes::from_hex("49276d206b696c6c696e6720796f757220627261696e206c696b65206120706f69736f6e6f7573206d757368726f6f6d").unwrap();
