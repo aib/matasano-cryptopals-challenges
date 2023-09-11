@@ -58,6 +58,11 @@ impl Bytes {
 	pub fn to_string(&self) -> String {
 		String::from_utf8_lossy(&self.bytes).into_owned()
 	}
+
+	pub fn sha256str(&self) -> String {
+		let digest = openssl::hash::hash(openssl::hash::MessageDigest::sha256(), &self.bytes).unwrap();
+		Self::from_vec(digest.to_vec()).to_hex()
+	}
 }
 
 impl AsRef<[u8]> for Bytes {
@@ -270,5 +275,14 @@ fn main() {
 				.collect::<Vec<_>>()
 		);
 		println!("Set 1 Challenge 6:\n{}\n(key 0x{})", text.to_string(), key.to_hex());
+	}
+
+	{ // Set 1 Challenge 7
+		let bs = Bytes::from_base64(&std::fs::read_to_string("7.txt").unwrap()).unwrap();
+		let cipher = openssl::symm::Cipher::aes_128_ecb();
+
+		let res = Bytes::from_vec(openssl::symm::decrypt(cipher, b"YELLOW SUBMARINE", None, &bs.bytes).unwrap());
+		println!("Set 1 Challenge 7: {}", res.to_string().lines().next().unwrap().trim());
+		assert_eq!("24df84533fc2778495577c844bcf3fe1d4d17c68d8c5cbc5a308286db58c69b6", res.sha256str());
 	}
 }
