@@ -13,66 +13,48 @@ enum Base64Error {
 	InvalidEnding,
 }
 
-#[derive(Debug)]
-struct Bytes {
-	bytes: Vec<u8>,
+fn bytes_from_hex(hstr: &str) -> Result<Vec<u8>, HexError> {
+	hex::decode(hstr).map_err(|err| match err {
+		hex::FromHexError::InvalidHexCharacter {..} => HexError::InvalidCharacter,
+		hex::FromHexError::OddLength                => HexError::OddLength,
+		hex::FromHexError::InvalidStringLength => panic!("Invalid error for hex::decode"),
+	})
 }
 
-impl Bytes {
-	pub fn from_vec(bytes: Vec<u8>) -> Self {
-		Self { bytes }
-	}
-
-	pub fn from_hex(hstr: &str) -> Result<Self, HexError> {
-		hex::decode(hstr).map_err(|err| match err {
-			hex::FromHexError::InvalidHexCharacter {..} => HexError::InvalidCharacter,
-			hex::FromHexError::OddLength                => HexError::OddLength,
-			hex::FromHexError::InvalidStringLength => panic!("Invalid error for hex::decode"),
-		}).map(Self::from_vec)
-	}
-
-	pub fn from_base64(estr: &str) -> Result<Self, Base64Error> {
-		use base64::Engine;
-		let stripped: String = estr.chars().filter(|c| !c.is_whitespace()).collect();
-		base64::engine::general_purpose::STANDARD.decode(&stripped).map_err(|err| match err {
-			base64::DecodeError::InvalidByte(_, _) => Base64Error::InvalidCharacter,
-			base64::DecodeError::InvalidLength |
-			base64::DecodeError::InvalidLastSymbol { .. } |
-			base64::DecodeError::InvalidPadding => Base64Error::InvalidEnding,
-		}).map(Self::from_vec)
-	}
-
-	pub fn from_str(s: &str) -> Self {
-		Self::from_vec(s.to_owned().into_bytes())
-	}
-
-	pub fn to_hex(&self) -> String {
-		hex::encode(&self.bytes)
-	}
-
-	pub fn to_base64(&self) -> String {
-		use base64::Engine;
-		base64::engine::general_purpose::STANDARD.encode(&self.bytes)
-	}
-
-	pub fn to_string(&self) -> String {
-		String::from_utf8_lossy(&self.bytes).into_owned()
-	}
-
-	pub fn sha256str(&self) -> String {
-		let digest = openssl::hash::hash(openssl::hash::MessageDigest::sha256(), &self.bytes).unwrap();
-		Self::from_vec(digest.to_vec()).to_hex()
-	}
+fn bytes_from_base64(estr: &str) -> Result<Vec<u8>, Base64Error> {
+	use base64::Engine;
+	let stripped: String = estr.chars().filter(|c| !c.is_whitespace()).collect();
+	base64::engine::general_purpose::STANDARD.decode(&stripped).map_err(|err| match err {
+		base64::DecodeError::InvalidByte(_, _) => Base64Error::InvalidCharacter,
+		base64::DecodeError::InvalidLength |
+		base64::DecodeError::InvalidLastSymbol { .. } |
+		base64::DecodeError::InvalidPadding => Base64Error::InvalidEnding,
+	})
 }
 
-impl AsRef<[u8]> for Bytes {
-	fn as_ref(&self) -> &[u8] {
-		&self.bytes
-	}
+fn bytes_from_str(s: &str) -> Vec<u8> {
+	s.to_owned().into_bytes()
 }
 
-fn xor<T: AsRef<[u8]>>(b1: T, b2: T) -> Bytes {
-	let (b1, b2) = (b1.as_ref(), b2.as_ref());
+fn bytes_to_hex(bs: &[u8]) -> String {
+	hex::encode(bs)
+}
+
+fn bytes_to_base64(bs: &[u8]) -> String {
+	use base64::Engine;
+	base64::engine::general_purpose::STANDARD.encode(bs)
+}
+
+fn bytes_to_string(bs: &[u8]) -> String {
+	String::from_utf8_lossy(bs).into_owned()
+}
+
+fn sha256str(bs: &[u8]) -> String {
+	let digest = openssl::hash::hash(openssl::hash::MessageDigest::sha256(), bs).unwrap();
+	bytes_to_hex(&digest)
+}
+
+fn xor(b1: &[u8], b2: &[u8]) -> Vec<u8> {
 	let size = std::cmp::max(b1.len(), b2.len());
 	let pad1 = b2.len().saturating_sub(b1.len());
 	let pad2 = b1.len().saturating_sub(b2.len());
@@ -87,17 +69,16 @@ fn xor<T: AsRef<[u8]>>(b1: T, b2: T) -> Bytes {
 			res.push(b1[i - pad1] ^ b2[i - pad2]);
 		}
 	}
-	Bytes::from_vec(res)
+	res
 }
 
-fn xor_encode<T: AsRef<[u8]>, U: AsRef<[u8]>>(text: T, key: U) -> Bytes {
-	let (text, key) = (text.as_ref(), key.as_ref());
+fn xor_encode(text: &[u8], key: &[u8]) -> Vec<u8> {
 	let size = text.len();
 	let mut encoded = Vec::with_capacity(size);
 	for i in 0..size {
 		encoded.push(text[i] ^ key[i % key.len()]);
 	}
-	Bytes::from_vec(encoded)
+	encoded
 }
 
 fn counts<T, I>(iterator: T) -> HashMap<I, usize>
@@ -164,7 +145,7 @@ fn score_text(text: &str) -> f64 {
 	score
 }
 
-fn hamming_distance<T: AsRef<[u8]>>(str1: T, str2: T) -> usize {
+fn hamming_distance(str1: &[u8], str2: &[u8]) -> usize {
 	let mut distance = 0;
 	for (b1, b2) in std::iter::zip(str1.as_ref(), str2.as_ref()) {
 		distance += (b1 ^ b2).count_ones() as usize;
@@ -172,9 +153,9 @@ fn hamming_distance<T: AsRef<[u8]>>(str1: T, str2: T) -> usize {
 	distance
 }
 
-fn solve_xor<T: AsRef<[u8]>, F: Fn(&str) -> f64>(ciphertext: T, keysize: usize, scorer: F) -> (Bytes, Bytes, f64) {
+fn solve_xor<F: Fn(&str) -> f64>(ciphertext: &[u8], keysize: usize, scorer: F) -> (Vec<u8>, Vec<u8>, f64) {
 	if keysize == 0 {
-		return (Bytes::from_vec(vec![]), Bytes::from_vec(vec![]), scorer(""));
+		return (vec![], vec![], scorer(""));
 	}
 
 	fn all_keys(size: usize) -> Vec<Vec<u8>> {
@@ -193,59 +174,59 @@ fn solve_xor<T: AsRef<[u8]>, F: Fn(&str) -> f64>(ciphertext: T, keysize: usize, 
 
 	let mut scored: Vec<_> = all_keys(keysize).into_iter().map(|key| {
 		let plaintext = xor_encode(&ciphertext, &key);
-		let score = scorer(&plaintext.to_string());
+		let score = scorer(&bytes_to_string(&plaintext));
 		(key, plaintext, score)
 	}).collect();
 	scored.sort_by(|kts1, kts2| kts1.2.total_cmp(&kts2.2));
 
 	let (key, plaintext, score) = scored.pop().unwrap();
-	(Bytes::from_vec(key), plaintext, score)
+	(key, plaintext, score)
 }
 
 fn main() {
 	{ // Set 1 Challenge 1
-		let num = Bytes::from_hex("49276d206b696c6c696e6720796f757220627261696e206c696b65206120706f69736f6e6f7573206d757368726f6f6d").unwrap();
-		assert_eq!("SSdtIGtpbGxpbmcgeW91ciBicmFpbiBsaWtlIGEgcG9pc29ub3VzIG11c2hyb29t", num.to_base64());
-		println!("Set 1 Challenge 1: {}", num.to_base64());
+		let num = bytes_from_hex("49276d206b696c6c696e6720796f757220627261696e206c696b65206120706f69736f6e6f7573206d757368726f6f6d").unwrap();
+		assert_eq!("SSdtIGtpbGxpbmcgeW91ciBicmFpbiBsaWtlIGEgcG9pc29ub3VzIG11c2hyb29t", bytes_to_base64(&num));
+		println!("Set 1 Challenge 1: {}", bytes_to_base64(&num));
 	}
 
 	{ // Set 1 Challenge 2
-		let res = xor(&Bytes::from_hex("1c0111001f010100061a024b53535009181c").unwrap(), &Bytes::from_hex("686974207468652062756c6c277320657965").unwrap());
-		assert_eq!("746865206b696420646f6e277420706c6179", res.to_hex());
-		println!("Set 1 Challenge 2: {}", res.to_hex());
+		let res = xor(&bytes_from_hex("1c0111001f010100061a024b53535009181c").unwrap(), &bytes_from_hex("686974207468652062756c6c277320657965").unwrap());
+		assert_eq!("746865206b696420646f6e277420706c6179", bytes_to_hex(&res));
+		println!("Set 1 Challenge 2: {}", bytes_to_hex(&res));
 	}
 
 	{ // Set 1 Challenge 3
-		let ciphertext = Bytes::from_hex("1b37373331363f78151b7f2b783431333d78397828372d363c78373e783a393b3736").unwrap();
+		let ciphertext = bytes_from_hex("1b37373331363f78151b7f2b783431333d78397828372d363c78373e783a393b3736").unwrap();
 		let (key, text, _score) = solve_xor(&ciphertext, 1, score_text);
-		println!("Set 1 Challenge 3: {} (key 0x{})", text.to_string(), key.to_hex());
+		println!("Set 1 Challenge 3: {} (key 0x{})", bytes_to_string(&text), bytes_to_hex(&key));
 	}
 
 	{ // Set 1 Challenge 4
 		let f = std::fs::read_to_string("4.txt").unwrap();
 		let mut scored: Vec<_> = f.lines()
-			.map(|l| Bytes::from_hex(l).unwrap())
+			.map(|l| bytes_from_hex(l).unwrap())
 			.enumerate().map(|(line_no, line)| (line_no, solve_xor(&line, 1, score_text)))
 			.collect();
 		scored.sort_by(|l_kts1, l_kts2| l_kts1.1.2.total_cmp(&l_kts2.1.2));
 		let (line_no, (key, text, _score)) = scored.pop().unwrap();
-		println!("Set 1 Challenge 4: {} (line {}, key 0x{})", text.to_string().trim(), line_no + 1, key.to_hex());
+		println!("Set 1 Challenge 4: {} (line {}, key 0x{})", bytes_to_string(&text).trim(), line_no + 1, bytes_to_hex(&key));
 	}
 
 	{ // Set 1 Challenge 5
-		let plaintext = Bytes::from_str("Burning 'em, if you ain't quick and nimble\nI go crazy when I hear a cymbal");
-		let key = Bytes::from_str("ICE");
+		let plaintext = bytes_from_str("Burning 'em, if you ain't quick and nimble\nI go crazy when I hear a cymbal");
+		let key = bytes_from_str("ICE");
 		let ciphertext = xor_encode(&plaintext, &key);
-		println!("Set 1 Challenge 5: {}", ciphertext.to_hex());
-		assert_eq!("0b3637272a2b2e63622c2e69692a23693a2a3c6324202d623d63343c2a26226324272765272a282b2f20430a652e2c652a3124333a653e2b2027630c692b20283165286326302e27282f", ciphertext.to_hex());
+		println!("Set 1 Challenge 5: {}", bytes_to_hex(&ciphertext));
+		assert_eq!("0b3637272a2b2e63622c2e69692a23693a2a3c6324202d623d63343c2a26226324272765272a282b2f20430a652e2c652a3124333a653e2b2027630c692b20283165286326302e27282f", bytes_to_hex(&ciphertext));
 	}
 
 	{ // Set 1 Challenge 6
-		assert_eq!(37, hamming_distance(&Bytes::from_str("this is a test"), &Bytes::from_str("wokka wokka!!!")));
-		let bs = Bytes::from_base64(&std::fs::read_to_string("6.txt").unwrap()).unwrap();
+		assert_eq!(37, hamming_distance(&bytes_from_str("this is a test"), &bytes_from_str("wokka wokka!!!")));
+		let bs = bytes_from_base64(&std::fs::read_to_string("6.txt").unwrap()).unwrap();
 		let mut keysize_dists: Vec<_> = (2..=40).map(|keysize| {
 			let block_count = 4;
-			let blocks: Vec<_> = bs.as_ref().chunks(keysize).take(block_count).collect();
+			let blocks: Vec<_> = bs.chunks(keysize).take(block_count).collect();
 			let mut total_distance = 0;
 			for i in 0..block_count {
 				for j in 0..block_count {
@@ -258,32 +239,31 @@ fn main() {
 		keysize_dists.sort_by(|kd1, kd2| kd1.1.total_cmp(&kd2.1).reverse());
 		let probable_keysize = keysize_dists.pop().unwrap().0;
 
-		let blocks: Vec<Vec<u8>> = bs.bytes.chunks(probable_keysize).map(|c| c.to_owned()).collect();
+		let blocks: Vec<Vec<u8>> = bs.chunks(probable_keysize).map(|c| c.to_owned()).collect();
 		let transposed: Vec<_> = (0..probable_keysize).map(|n| {
 			let vslice: Vec<u8> = blocks.iter().filter_map(|b| b.get(n).copied()).collect();
 			let (key, text, _score) = solve_xor(&vslice, 1, score_text);
 			(key, text)
 		}).collect();
-		let (key_t, text_t): (Vec<Bytes>, Vec<Bytes>) = transposed.into_iter().unzip();
+		let (key_t, text_t): (Vec<Vec<u8>>, Vec<Vec<u8>>) = transposed.into_iter().unzip();
 
-		let key = Bytes::from_vec(key_t.into_iter().flat_map(|k| k.bytes).collect());
-		let text = Bytes::from_vec(
-			(0..)
-				.map(|n| text_t.iter().filter_map(|t| t.bytes.get(n).copied()).collect::<Vec<_>>())
-				.take_while(|b| b.len() > 0)
-				.flatten()
-				.collect::<Vec<_>>()
-		);
-		println!("Set 1 Challenge 6: {} (key 0x{})", text.to_string().lines().next().unwrap().trim(), key.to_hex());
-		assert_eq!("24df84533fc2778495577c844bcf3fe1d4d17c68d8c5cbc5a308286db58c69b6", text.sha256str());
+		let key: Vec<u8> = key_t.into_iter().flatten().collect();
+		let text = (0..)
+			.map(|n| text_t.iter().filter_map(|t| t.get(n).copied()).collect::<Vec<_>>())
+			.take_while(|b| b.len() > 0)
+			.flatten()
+			.collect::<Vec<_>>();
+
+		println!("Set 1 Challenge 6: {} (key 0x{})", bytes_to_string(&text).lines().next().unwrap().trim(), bytes_to_hex(&key));
+		assert_eq!("24df84533fc2778495577c844bcf3fe1d4d17c68d8c5cbc5a308286db58c69b6", sha256str(&text));
 	}
 
 	{ // Set 1 Challenge 7
-		let bs = Bytes::from_base64(&std::fs::read_to_string("7.txt").unwrap()).unwrap();
+		let bs = bytes_from_base64(&std::fs::read_to_string("7.txt").unwrap()).unwrap();
 		let cipher = openssl::symm::Cipher::aes_128_ecb();
 
-		let res = Bytes::from_vec(openssl::symm::decrypt(cipher, b"YELLOW SUBMARINE", None, &bs.bytes).unwrap());
-		println!("Set 1 Challenge 7: {}", res.to_string().lines().next().unwrap().trim());
-		assert_eq!("24df84533fc2778495577c844bcf3fe1d4d17c68d8c5cbc5a308286db58c69b6", res.sha256str());
+		let res = openssl::symm::decrypt(cipher, b"YELLOW SUBMARINE", None, &bs).unwrap();
+		println!("Set 1 Challenge 7: {}", bytes_to_string(&res).lines().next().unwrap().trim());
+		assert_eq!("24df84533fc2778495577c844bcf3fe1d4d17c68d8c5cbc5a308286db58c69b6", sha256str(&res));
 	}
 }
