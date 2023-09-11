@@ -191,7 +191,7 @@ fn solve_xor<T: AsRef<[u8]>, F: Fn(&str) -> f64>(ciphertext: T, keysize: usize, 
 		let score = scorer(&plaintext.to_string());
 		(key, plaintext, score)
 	}).collect();
-	scored.sort_by(|kts1, kts2| kts1.2.partial_cmp(&kts2.2).unwrap());
+	scored.sort_by(|kts1, kts2| kts1.2.total_cmp(&kts2.2));
 
 	let (key, plaintext, score) = scored.pop().unwrap();
 	(Bytes::from_vec(key), plaintext, score)
@@ -222,7 +222,7 @@ fn main() {
 			.map(|l| Bytes::from_hex(l).unwrap())
 			.enumerate().map(|(line_no, line)| (line_no, solve_xor(&line, 1, score_text)))
 			.collect();
-		scored.sort_by(|l_kts1, l_kts2| l_kts1.1.2.partial_cmp(&l_kts2.1.2).unwrap());
+		scored.sort_by(|l_kts1, l_kts2| l_kts1.1.2.total_cmp(&l_kts2.1.2));
 		let (line_no, (key, text, _score)) = scored.pop().unwrap();
 		println!("Set 1 Challenge 4: {} (line {}, key 0x{})", text.to_string().trim(), line_no + 1, key.to_hex());
 	}
@@ -250,7 +250,7 @@ fn main() {
 			let normalized_distance = total_distance as f64 / keysize as f64;
 			(keysize, normalized_distance)
 		}).collect();
-		keysize_dists.sort_by(|kd1, kd2| kd1.1.partial_cmp(&kd2.1).unwrap().reverse());
+		keysize_dists.sort_by(|kd1, kd2| kd1.1.total_cmp(&kd2.1).reverse());
 		let probable_keysize = keysize_dists.pop().unwrap().0;
 
 		let blocks: Vec<Vec<u8>> = bs.bytes.chunks(probable_keysize).map(|c| c.to_owned()).collect();
