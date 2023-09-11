@@ -238,5 +238,37 @@ fn main() {
 	{ // Set 1 Challenge 6
 		assert_eq!(37, hamming_distance(&Bytes::from_str("this is a test"), &Bytes::from_str("wokka wokka!!!")));
 		let bs = Bytes::from_base64(&std::fs::read_to_string("6.txt").unwrap()).unwrap();
+		let mut keysize_dists: Vec<_> = (2..=40).map(|keysize| {
+			let block_count = 4;
+			let blocks: Vec<_> = bs.as_ref().chunks(keysize).take(block_count).collect();
+			let mut total_distance = 0;
+			for i in 0..block_count {
+				for j in 0..block_count {
+					total_distance += hamming_distance(blocks[i], blocks[j]);
+				}
+			}
+			let normalized_distance = total_distance as f64 / keysize as f64;
+			(keysize, normalized_distance)
+		}).collect();
+		keysize_dists.sort_by(|kd1, kd2| kd1.1.partial_cmp(&kd2.1).unwrap().reverse());
+		let probable_keysize = keysize_dists.pop().unwrap().0;
+
+		let blocks: Vec<Vec<u8>> = bs.bytes.chunks(probable_keysize).map(|c| c.to_owned()).collect();
+		let transposed: Vec<_> = (0..probable_keysize).map(|n| {
+			let vslice: Vec<u8> = blocks.iter().filter_map(|b| b.get(n).copied()).collect();
+			let (key, text, _score) = solve_xor(&vslice, 1, score_text);
+			(key, text)
+		}).collect();
+		let (key_t, text_t): (Vec<Bytes>, Vec<Bytes>) = transposed.into_iter().unzip();
+
+		let key = Bytes::from_vec(key_t.into_iter().flat_map(|k| k.bytes).collect());
+		let text = Bytes::from_vec(
+			(0..)
+				.map(|n| text_t.iter().filter_map(|t| t.bytes.get(n).copied()).collect::<Vec<_>>())
+				.take_while(|b| b.len() > 0)
+				.flatten()
+				.collect::<Vec<_>>()
+		);
+		println!("Set 1 Challenge 6:\n{}\n(key 0x{})", text.to_string(), key.to_hex());
 	}
 }
