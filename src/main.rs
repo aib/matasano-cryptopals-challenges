@@ -274,7 +274,8 @@ fn main() {
 				.flatten()
 				.collect::<Vec<_>>()
 		);
-		println!("Set 1 Challenge 6:\n{}\n(key 0x{})", text.to_string(), key.to_hex());
+		println!("Set 1 Challenge 6: {} (key 0x{})", text.to_string().lines().next().unwrap().trim(), key.to_hex());
+		assert_eq!("24df84533fc2778495577c844bcf3fe1d4d17c68d8c5cbc5a308286db58c69b6", text.sha256str());
 	}
 
 	{ // Set 1 Challenge 7
