@@ -24,7 +24,7 @@ fn bytes_from_hex(hstr: &str) -> Result<Vec<u8>, HexError> {
 fn bytes_from_base64(estr: &str) -> Result<Vec<u8>, Base64Error> {
 	use base64::Engine;
 	let stripped: String = estr.chars().filter(|c| !c.is_whitespace()).collect();
-	base64::engine::general_purpose::STANDARD.decode(&stripped).map_err(|err| match err {
+	base64::engine::general_purpose::STANDARD.decode(stripped).map_err(|err| match err {
 		base64::DecodeError::InvalidByte(_, _) => Base64Error::InvalidCharacter,
 		base64::DecodeError::InvalidLength |
 		base64::DecodeError::InvalidLastSymbol { .. } |
@@ -93,7 +93,7 @@ where T: Iterator<Item=I>, I: Eq + Hash {
 fn frequencies<T, I>(iterator: T) -> HashMap<I, f64>
 where T: Iterator<Item=I>, I: Eq + Hash {
 	let counts = counts(iterator);
-	let total: usize = counts.iter().map(|(_, c)| c).sum();
+	let total: usize = counts.values().sum();
 	counts.into_iter()
 		.map(|kv| (kv.0, kv.1 as f64 / total as f64))
 		.collect()
@@ -173,7 +173,7 @@ fn solve_xor<F: Fn(&str) -> f64>(ciphertext: &[u8], keysize: usize, scorer: F) -
 	}
 
 	let mut scored: Vec<_> = all_keys(keysize).into_iter().map(|key| {
-		let plaintext = xor_encode(&ciphertext, &key);
+		let plaintext = xor_encode(ciphertext, &key);
 		let score = scorer(&bytes_to_string(&plaintext));
 		(key, plaintext, score)
 	}).collect();
@@ -250,7 +250,7 @@ fn main() {
 		let key: Vec<u8> = key_t.into_iter().flatten().collect();
 		let text = (0..)
 			.map(|n| text_t.iter().filter_map(|t| t.get(n).copied()).collect::<Vec<_>>())
-			.take_while(|b| b.len() > 0)
+			.take_while(|b| !b.is_empty())
 			.flatten()
 			.collect::<Vec<_>>();
 
