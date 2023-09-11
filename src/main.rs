@@ -84,7 +84,7 @@ fn xor<T: AsRef<[u8]>>(b1: T, b2: T) -> Bytes {
 	Bytes::from_vec(res)
 }
 
-fn xor_encode<T: AsRef<[u8]>>(text: T, key: T) -> Bytes {
+fn xor_encode<T: AsRef<[u8]>, U: AsRef<[u8]>>(text: T, key: U) -> Bytes {
 	let (text, key) = (text.as_ref(), key.as_ref());
 	let size = text.len();
 	let mut encoded = Vec::with_capacity(size);
