@@ -134,6 +134,21 @@ fn hamming_distance(str1: &[u8], str2: &[u8]) -> usize {
 	distance
 }
 
+fn chunked_average_distance(slice: &[u8], chunk_size: usize) -> f64 {
+	let blocks: Vec<&[u8]> = slice.chunks(chunk_size).collect();
+	let mut total_distance = 0.0;
+	let mut num_comparisons = 0;
+	for i in 0..blocks.len() {
+		let block1 = blocks[i];
+		for j in (i+1)..blocks.len() {
+			let block2 = blocks[j];
+			total_distance += hamming_distance(&block1, &block2) as f64 / usize::min(block1.len(), block2.len()) as f64;
+			num_comparisons += 1
+		}
+	}
+	total_distance / num_comparisons as f64
+}
+
 fn solve_xor<F: Fn(&str) -> f64>(ciphertext: &[u8], keysize: usize, scorer: F) -> (Vec<u8>, Vec<u8>, f64) {
 	if keysize == 0 {
 		return (vec![], vec![], scorer(""));
