@@ -220,18 +220,9 @@ fn main() {
 	{ // Set 1 Challenge 6
 		assert_eq!(37, hamming_distance(&bytes_from_str("this is a test"), &bytes_from_str("wokka wokka!!!")));
 		let bs = bytes_from_base64(&std::fs::read_to_string("6.txt").unwrap());
-		let mut keysize_dists: Vec<_> = (2..=40).map(|keysize| {
-			let block_count = 4;
-			let blocks: Vec<_> = bs.chunks(keysize).take(block_count).collect();
-			let mut total_distance = 0;
-			for i in 0..block_count {
-				for j in 0..block_count {
-					total_distance += hamming_distance(blocks[i], blocks[j]);
-				}
-			}
-			let normalized_distance = total_distance as f64 / keysize as f64;
-			(keysize, normalized_distance)
-		}).collect();
+		let mut keysize_dists: Vec<_> = (2..=40)
+			.map(|keysize| (keysize, chunked_average_distance(&bs, keysize)))
+			.collect();
 		keysize_dists.sort_by(|kd1, kd2| kd1.1.total_cmp(&kd2.1).reverse());
 		let probable_keysize = keysize_dists.pop().unwrap().0;
 
