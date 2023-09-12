@@ -342,11 +342,14 @@ fn main() {
 	}
 
 	{ // Test CBC
+		use rand::Rng;
+		let mut rng = rand::thread_rng();
+
 		let msg = bytes_from_str("We all live in a yellow submarine");
-		let key = b"YELLOW SUBMARINE";
-		let iv  = b"yellow submarine";
-		let enc = cbc_encrypt(aes_128_encrypt_block, 16, key, iv, &msg);
-		let dec = cbc_decrypt(aes_128_decrypt_block, 16, key, iv, &enc);
+		let key = rng.gen::<[u8;16]>();
+		let iv  = rng.gen::<[u8;16]>();
+		let enc = cbc_encrypt(aes_128_encrypt_block, 16, &key, &iv, &msg);
+		let dec = cbc_decrypt(aes_128_decrypt_block, 16, &key, &iv, &enc);
 		assert_eq!(msg, dec);
 	}
 }
