@@ -188,6 +188,11 @@ fn pkcs7_pad(bytes: &[u8], size: usize) -> Vec<u8> {
 	vec
 }
 
+fn pkcs7_pad_to_block_size(bytes: &[u8], block_size: usize) -> Vec<u8> {
+	let pad = block_size - (bytes.len() % block_size);
+	pkcs7_pad(bytes, bytes.len() + pad)
+}
+
 fn pkcs7_unpad_in_place(bytes: &mut Vec<u8>) {
 	let pad = bytes[bytes.len() - 1].into();
 	bytes.truncate(bytes.len().saturating_sub(pad));
@@ -211,9 +216,7 @@ fn aes_128_decrypt_block(key: &[u8], ciphertext: &[u8]) -> Vec<u8> {
 
 fn ecb_encrypt<F>(ecb: F, block_size: usize, key: &[u8], plaintext: &[u8]) -> Vec<u8>
 where F: Fn(&[u8], &[u8]) -> Vec<u8> {
-	let padding = block_size - (plaintext.len() % block_size);
-	let padded = pkcs7_pad(plaintext, plaintext.len() + padding);
-
+	let padded = pkcs7_pad_to_block_size(plaintext, block_size);
 	let mut res = Vec::with_capacity(padded.len());
 	for ptb in padded.chunks(block_size) {
 		res.extend_from_slice(&ecb(key, ptb));
@@ -233,9 +236,7 @@ where F: Fn(&[u8], &[u8]) -> Vec<u8> {
 
 fn cbc_encrypt<F>(ecb: F, block_size: usize, key: &[u8], iv: &[u8], plaintext: &[u8]) -> Vec<u8>
 where F: Fn(&[u8], &[u8]) -> Vec<u8> {
-	let padding = block_size - (plaintext.len() % block_size);
-	let padded = pkcs7_pad(plaintext, plaintext.len() + padding);
-
+	let padded = pkcs7_pad_to_block_size(plaintext, block_size);
 	let mut res = Vec::with_capacity(padded.len());
 	let mut iv = iv.to_vec();
 
