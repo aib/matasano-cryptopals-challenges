@@ -253,4 +253,16 @@ fn main() {
 		println!("Set 1 Challenge 7: {}", bytes_to_string(&res).lines().next().unwrap().trim());
 		assert_eq!("24df84533fc2778495577c844bcf3fe1d4d17c68d8c5cbc5a308286db58c69b6", sha256str(&res));
 	}
+
+	{ // Set 1 Challenge 8
+		let cts: Vec<Vec<u8>> = std::fs::read_to_string("8.txt").unwrap().lines().map(bytes_from_hex).collect();
+
+		let mut ct_distances: Vec<_> = cts.iter()
+			.map(|ct| (ct, chunked_average_distance(&ct, 16)))
+			.collect();
+
+		ct_distances.sort_by(|ct_d1, ct_d2| ct_d1.1.total_cmp(&ct_d2.1).reverse());
+		let (ct, _distance) = ct_distances.pop().unwrap();
+		println!("Set 1 Challenge 8: {}?", sha256str(&ct));
+	}
 }
