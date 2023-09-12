@@ -179,6 +179,15 @@ fn solve_xor<F: Fn(&str) -> f64>(ciphertext: &[u8], keysize: usize, scorer: F) -
 	(key, plaintext, score)
 }
 
+fn pkcs7_pad(bytes: &[u8], size: usize) -> Vec<u8> {
+	let pad = size.saturating_sub(bytes.len());
+	let mut vec = bytes.to_vec();
+	for _ in 0..pad {
+		vec.push(pad as u8);
+	}
+	vec
+}
+
 fn main() {
 	{ // Set 1 Challenge 1
 		let num = bytes_from_hex("49276d206b696c6c696e6720796f757220627261696e206c696b65206120706f69736f6e6f7573206d757368726f6f6d");
@@ -264,5 +273,11 @@ fn main() {
 		ct_distances.sort_by(|ct_d1, ct_d2| ct_d1.1.total_cmp(&ct_d2.1).reverse());
 		let (ct, _distance) = ct_distances.pop().unwrap();
 		println!("Set 1 Challenge 8: {}?", sha256str(&ct));
+	}
+
+	{ // Set 2 Challenge 9
+		let padded = pkcs7_pad(b"YELLOW SUBMARINE", 20);
+		println!("Set 2 Challenge 9: {}", bytes_to_hex(&padded));
+		assert_eq!(b"YELLOW SUBMARINE\x04\x04\x04\x04".as_ref(), padded);
 	}
 }
