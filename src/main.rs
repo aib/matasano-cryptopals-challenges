@@ -1,35 +1,15 @@
 use std::collections::HashMap;
 use std::hash::Hash;
 
-#[derive(Debug)]
-enum HexError {
-	InvalidCharacter,
-	OddLength,
+fn bytes_from_hex(hstr: &str) -> Vec<u8> {
+	hex::decode(hstr).expect("Error decoding hex")
 }
 
-#[derive(Debug)]
-enum Base64Error {
-	InvalidCharacter,
-	InvalidEnding,
-}
-
-fn bytes_from_hex(hstr: &str) -> Result<Vec<u8>, HexError> {
-	hex::decode(hstr).map_err(|err| match err {
-		hex::FromHexError::InvalidHexCharacter {..} => HexError::InvalidCharacter,
-		hex::FromHexError::OddLength                => HexError::OddLength,
-		hex::FromHexError::InvalidStringLength => panic!("Invalid error for hex::decode"),
-	})
-}
-
-fn bytes_from_base64(estr: &str) -> Result<Vec<u8>, Base64Error> {
+fn bytes_from_base64(estr: &str) -> Vec<u8> {
 	use base64::Engine;
 	let stripped: String = estr.chars().filter(|c| !c.is_whitespace()).collect();
-	base64::engine::general_purpose::STANDARD.decode(stripped).map_err(|err| match err {
-		base64::DecodeError::InvalidByte(_, _) => Base64Error::InvalidCharacter,
-		base64::DecodeError::InvalidLength |
-		base64::DecodeError::InvalidLastSymbol { .. } |
-		base64::DecodeError::InvalidPadding => Base64Error::InvalidEnding,
-	})
+	base64::engine::general_purpose::STANDARD.decode(stripped)
+		.expect("Error decoding base64")
 }
 
 fn bytes_from_str(s: &str) -> Vec<u8> {
@@ -50,7 +30,8 @@ fn bytes_to_string(bs: &[u8]) -> String {
 }
 
 fn sha256str(bs: &[u8]) -> String {
-	let digest = openssl::hash::hash(openssl::hash::MessageDigest::sha256(), bs).unwrap();
+	let digest = openssl::hash::hash(openssl::hash::MessageDigest::sha256(), bs)
+		.expect("Unable to hash");
 	bytes_to_hex(&digest)
 }
 
@@ -185,19 +166,19 @@ fn solve_xor<F: Fn(&str) -> f64>(ciphertext: &[u8], keysize: usize, scorer: F) -
 
 fn main() {
 	{ // Set 1 Challenge 1
-		let num = bytes_from_hex("49276d206b696c6c696e6720796f757220627261696e206c696b65206120706f69736f6e6f7573206d757368726f6f6d").unwrap();
+		let num = bytes_from_hex("49276d206b696c6c696e6720796f757220627261696e206c696b65206120706f69736f6e6f7573206d757368726f6f6d");
 		assert_eq!("SSdtIGtpbGxpbmcgeW91ciBicmFpbiBsaWtlIGEgcG9pc29ub3VzIG11c2hyb29t", bytes_to_base64(&num));
 		println!("Set 1 Challenge 1: {}", bytes_to_base64(&num));
 	}
 
 	{ // Set 1 Challenge 2
-		let res = xor(&bytes_from_hex("1c0111001f010100061a024b53535009181c").unwrap(), &bytes_from_hex("686974207468652062756c6c277320657965").unwrap());
+		let res = xor(&bytes_from_hex("1c0111001f010100061a024b53535009181c"), &bytes_from_hex("686974207468652062756c6c277320657965"));
 		assert_eq!("746865206b696420646f6e277420706c6179", bytes_to_hex(&res));
 		println!("Set 1 Challenge 2: {}", bytes_to_hex(&res));
 	}
 
 	{ // Set 1 Challenge 3
-		let ciphertext = bytes_from_hex("1b37373331363f78151b7f2b783431333d78397828372d363c78373e783a393b3736").unwrap();
+		let ciphertext = bytes_from_hex("1b37373331363f78151b7f2b783431333d78397828372d363c78373e783a393b3736");
 		let (key, text, _score) = solve_xor(&ciphertext, 1, score_text);
 		println!("Set 1 Challenge 3: {} (key 0x{})", bytes_to_string(&text), bytes_to_hex(&key));
 	}
@@ -205,7 +186,7 @@ fn main() {
 	{ // Set 1 Challenge 4
 		let f = std::fs::read_to_string("4.txt").unwrap();
 		let mut scored: Vec<_> = f.lines()
-			.map(|l| bytes_from_hex(l).unwrap())
+			.map(bytes_from_hex)
 			.enumerate().map(|(line_no, line)| (line_no, solve_xor(&line, 1, score_text)))
 			.collect();
 		scored.sort_by(|l_kts1, l_kts2| l_kts1.1.2.total_cmp(&l_kts2.1.2));
@@ -223,7 +204,7 @@ fn main() {
 
 	{ // Set 1 Challenge 6
 		assert_eq!(37, hamming_distance(&bytes_from_str("this is a test"), &bytes_from_str("wokka wokka!!!")));
-		let bs = bytes_from_base64(&std::fs::read_to_string("6.txt").unwrap()).unwrap();
+		let bs = bytes_from_base64(&std::fs::read_to_string("6.txt").unwrap());
 		let mut keysize_dists: Vec<_> = (2..=40).map(|keysize| {
 			let block_count = 4;
 			let blocks: Vec<_> = bs.chunks(keysize).take(block_count).collect();
@@ -259,7 +240,7 @@ fn main() {
 	}
 
 	{ // Set 1 Challenge 7
-		let bs = bytes_from_base64(&std::fs::read_to_string("7.txt").unwrap()).unwrap();
+		let bs = bytes_from_base64(&std::fs::read_to_string("7.txt").unwrap());
 		let cipher = openssl::symm::Cipher::aes_128_ecb();
 
 		let res = openssl::symm::decrypt(cipher, b"YELLOW SUBMARINE", None, &bs).unwrap();
