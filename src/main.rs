@@ -193,12 +193,37 @@ fn pkcs7_unpad_in_place(bytes: &mut Vec<u8>) {
 	bytes.truncate(bytes.len().saturating_sub(pad));
 }
 
+fn aes_128_encrypt_block(key: &[u8], plaintext: &[u8]) -> Vec<u8> {
+	use aes::cipher::{generic_array::GenericArray, BlockEncrypt, KeyInit};
+	let cipher = aes::Aes128::new(key.into());
+	let mut block = GenericArray::clone_from_slice(plaintext);
+	cipher.encrypt_block(&mut block);
+	block.to_vec()
+}
+
 fn aes_128_decrypt_block(key: &[u8], ciphertext: &[u8]) -> Vec<u8> {
 	use aes::cipher::{generic_array::GenericArray, BlockDecrypt, KeyInit};
 	let cipher = aes::Aes128::new(key.into());
 	let mut block = GenericArray::clone_from_slice(ciphertext);
 	cipher.decrypt_block(&mut block);
 	block.to_vec()
+}
+
+fn cbc_encrypt<F>(ecb: F, block_size: usize, key: &[u8], iv: &[u8], plaintext: &[u8]) -> Vec<u8>
+where F: Fn(&[u8], &[u8]) -> Vec<u8> {
+	let padding = block_size - (plaintext.len() % block_size);
+	let padded = pkcs7_pad(plaintext, plaintext.len() + padding);
+
+	let mut res = Vec::with_capacity(padded.len());
+	let mut iv = iv.to_vec();
+
+	for ptb in padded.chunks(block_size) {
+		let xored = xor_encode(&ptb, &iv);
+		let enc = ecb(key, &xored);
+		res.extend_from_slice(&enc);
+		iv = enc;
+	}
+	res
 }
 
 fn cbc_decrypt<F>(ecb: F, block_size: usize, key: &[u8], iv: &[u8], ciphertext: &[u8]) -> Vec<u8>
@@ -314,5 +339,14 @@ fn main() {
 		let dec = cbc_decrypt(aes_128_decrypt_block, 16, b"YELLOW SUBMARINE", &[0; 16], &ciphertext);
 		println!("Set 2 Challenge 10: {}", bytes_to_string(&dec).lines().next().unwrap().trim());
 		assert_eq!("24df84533fc2778495577c844bcf3fe1d4d17c68d8c5cbc5a308286db58c69b6", sha256str(&dec));
+	}
+
+	{ // Test CBC
+		let msg = bytes_from_str("We all live in a yellow submarine");
+		let key = b"YELLOW SUBMARINE";
+		let iv  = b"yellow submarine";
+		let enc = cbc_encrypt(aes_128_encrypt_block, 16, key, iv, &msg);
+		let dec = cbc_decrypt(aes_128_decrypt_block, 16, key, iv, &enc);
+		assert_eq!(msg, dec);
 	}
 }
