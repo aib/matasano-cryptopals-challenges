@@ -209,6 +209,28 @@ fn aes_128_decrypt_block(key: &[u8], ciphertext: &[u8]) -> Vec<u8> {
 	block.to_vec()
 }
 
+fn ecb_encrypt<F>(ecb: F, block_size: usize, key: &[u8], plaintext: &[u8]) -> Vec<u8>
+where F: Fn(&[u8], &[u8]) -> Vec<u8> {
+	let padding = block_size - (plaintext.len() % block_size);
+	let padded = pkcs7_pad(plaintext, plaintext.len() + padding);
+
+	let mut res = Vec::with_capacity(padded.len());
+	for ptb in padded.chunks(block_size) {
+		res.extend_from_slice(&ecb(key, ptb));
+	}
+	res
+}
+
+fn ecb_decrypt<F>(ecb: F, block_size: usize, key: &[u8], ciphertext: &[u8]) -> Vec<u8>
+where F: Fn(&[u8], &[u8]) -> Vec<u8> {
+	let mut res = Vec::with_capacity(ciphertext.len());
+	for ptb in ciphertext.chunks(block_size) {
+		res.extend_from_slice(&ecb(key, ptb));
+	}
+	pkcs7_unpad_in_place(&mut res);
+	res
+}
+
 fn cbc_encrypt<F>(ecb: F, block_size: usize, key: &[u8], iv: &[u8], plaintext: &[u8]) -> Vec<u8>
 where F: Fn(&[u8], &[u8]) -> Vec<u8> {
 	let padding = block_size - (plaintext.len() % block_size);
@@ -339,6 +361,17 @@ fn main() {
 		let dec = cbc_decrypt(aes_128_decrypt_block, 16, b"YELLOW SUBMARINE", &[0; 16], &ciphertext);
 		println!("Set 2 Challenge 10: {}", bytes_to_string(&dec).lines().next().unwrap().trim());
 		assert_eq!("24df84533fc2778495577c844bcf3fe1d4d17c68d8c5cbc5a308286db58c69b6", sha256str(&dec));
+	}
+
+	{ // Test ECB
+		use rand::Rng;
+		let mut rng = rand::thread_rng();
+
+		let msg = bytes_from_str("We all live in a yellow submarine");
+		let key = rng.gen::<[u8;16]>();
+		let enc = ecb_encrypt(aes_128_encrypt_block, 16, &key, &msg);
+		let dec = ecb_decrypt(aes_128_decrypt_block, 16, &key, &enc);
+		assert_eq!(msg, dec);
 	}
 
 	{ // Test CBC
