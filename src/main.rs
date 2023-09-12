@@ -188,6 +188,34 @@ fn pkcs7_pad(bytes: &[u8], size: usize) -> Vec<u8> {
 	vec
 }
 
+fn pkcs7_unpad_in_place(bytes: &mut Vec<u8>) {
+	let pad = bytes[bytes.len() - 1].into();
+	bytes.truncate(bytes.len().saturating_sub(pad));
+}
+
+fn aes_128_decrypt_block(key: &[u8], ciphertext: &[u8]) -> Vec<u8> {
+	use aes::cipher::{generic_array::GenericArray, BlockDecrypt, KeyInit};
+	let cipher = aes::Aes128::new(key.into());
+	let mut block = GenericArray::clone_from_slice(ciphertext);
+	cipher.decrypt_block(&mut block);
+	block.to_vec()
+}
+
+fn cbc_decrypt<F>(ecb: F, block_size: usize, key: &[u8], iv: &[u8], ciphertext: &[u8]) -> Vec<u8>
+where F: Fn(&[u8], &[u8]) -> Vec<u8> {
+	let mut res = Vec::with_capacity(ciphertext.len());
+	let mut iv = iv.clone();
+
+	for ctb in ciphertext.chunks(block_size) {
+		let bdec = ecb(key, ctb);
+		let xordec = xor_encode(&bdec, &iv);
+		res.extend(xordec);
+		iv = ctb;
+	}
+	pkcs7_unpad_in_place(&mut res);
+	res
+}
+
 fn main() {
 	{ // Set 1 Challenge 1
 		let num = bytes_from_hex("49276d206b696c6c696e6720796f757220627261696e206c696b65206120706f69736f6e6f7573206d757368726f6f6d");
@@ -279,5 +307,12 @@ fn main() {
 		let padded = pkcs7_pad(b"YELLOW SUBMARINE", 20);
 		println!("Set 2 Challenge 9: {}", bytes_to_hex(&padded));
 		assert_eq!(b"YELLOW SUBMARINE\x04\x04\x04\x04".as_ref(), padded);
+	}
+
+	{ // Set 2 Challenge 10
+		let ciphertext = bytes_from_base64(&std::fs::read_to_string("10.txt").unwrap());
+		let dec = cbc_decrypt(aes_128_decrypt_block, 16, b"YELLOW SUBMARINE", &[0; 16], &ciphertext);
+		println!("Set 2 Challenge 10: {}", bytes_to_string(&dec).lines().next().unwrap().trim());
+		assert_eq!("24df84533fc2778495577c844bcf3fe1d4d17c68d8c5cbc5a308286db58c69b6", sha256str(&dec));
 	}
 }
