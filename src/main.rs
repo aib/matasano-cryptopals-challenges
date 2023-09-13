@@ -1,4 +1,4 @@
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::hash::Hash;
 
 fn bytes_from_hex(hstr: &str) -> Vec<u8> {
@@ -147,6 +147,17 @@ fn chunked_average_distance(slice: &[u8], chunk_size: usize) -> f64 {
 		}
 	}
 	total_distance / num_comparisons as f64
+}
+
+fn count_duplicate_blocks(bytes: &[u8], block_size: usize) -> usize {
+	let mut blocks = HashSet::new();
+	let mut duplicates = 0;
+	for block in bytes.chunks(block_size) {
+		if !blocks.insert(block) {
+			duplicates += 1;
+		}
+	}
+	duplicates
 }
 
 fn solve_xor<F: Fn(&str) -> f64>(ciphertext: &[u8], keysize: usize, scorer: F) -> (Vec<u8>, Vec<u8>, f64) {
