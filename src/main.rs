@@ -35,6 +35,11 @@ fn sha256str(bs: &[u8]) -> String {
 	bytes_to_hex(&digest)
 }
 
+fn get_nth_block(bytes: &[u8], block_size: usize, n: usize) -> &[u8] {
+	let block_offset = n * block_size;
+	&bytes[usize::min(block_offset, bytes.len()) .. usize::min(block_offset + block_size, bytes.len())]
+}
+
 fn xor(b1: &[u8], b2: &[u8]) -> Vec<u8> {
 	let size = std::cmp::max(b1.len(), b2.len());
 	let pad1 = b2.len().saturating_sub(b1.len());
@@ -326,6 +331,61 @@ where F: FnOnce(&[u8]) -> Vec<u8> {
 	}
 }
 
+fn determine_encryptor_block_size<F>(mut ecb: F) -> usize
+where F: FnMut(&[u8]) -> Vec<u8> {
+	let mut pt = Vec::new();
+	let mut last_size = None;
+
+	loop {
+		let ct = ecb(&pt);
+		if let Some(ls) = last_size {
+			if ct.len() != ls {
+				return ct.len() - ls;
+			}
+		}
+		last_size = Some(ct.len());
+		pt.push(0);
+	}
+}
+
+fn solve_ecb_postfix<F>(mut ecb: F, block_size: usize) -> Vec<u8>
+where F: FnMut(&[u8]) -> Vec<u8> {
+	assert!(block_size > 0, "block_size is 0");
+
+	let mut known_postfix = Vec::new();
+
+	let mut get_next_byte = |block_size: usize, known_postfix: &[u8]| -> Option<u8> {
+		let (block_num, block_offset) = (known_postfix.len() / block_size, known_postfix.len() % block_size);
+
+		let mut block = Vec::with_capacity(block_size);
+		let zeroes = vec![0; block_size - 1 - block_offset];
+		block.extend(&zeroes);
+		block.extend(known_postfix);
+		block.push(0);
+
+		let encmap: HashMap<Vec<u8>, u8> = HashMap::from_iter(
+			(0..=255).map(|b| {
+				block[block_num * block_size + block_size - 1] = b;
+				let enc = ecb(&block);
+				(get_nth_block(&enc, block_size, block_num).to_vec(), b)
+			})
+		);
+		let enc = ecb(&zeroes);
+		encmap.get(get_nth_block(&enc, block_size, block_num)).copied()
+	};
+
+	loop {
+		if let Some(next_byte) = get_next_byte(block_size, &known_postfix) {
+			known_postfix.push(next_byte);
+		} else {
+			break;
+		}
+	}
+
+	known_postfix.pop(); // We always end up with padding
+	known_postfix
+}
+
 fn main() {
 	{ // Set 1 Challenge 1
 		let num = bytes_from_hex("49276d206b696c6c696e6720796f757220627261696e206c696b65206120706f69736f6e6f7573206d757368726f6f6d");
@@ -467,5 +527,36 @@ fn main() {
 		}
 		println!("Set 2 Challenge 11: {}/{}", correct, iterations);
 		assert!(correct as f64 / iterations as f64 > 0.8);
+	}
+
+	{ // Set 2 Challenge 12
+		let unknown_string = bytes_from_base64(concat!(
+			"Um9sbGluJyBpbiBteSA1LjAKV2l0aCBteSByYWctdG9wIGRvd24gc28gbXkg",
+			"aGFpciBjYW4gYmxvdwpUaGUgZ2lybGllcyBvbiBzdGFuZGJ5IHdhdmluZyBq",
+			"dXN0IHRvIHNheSBoaQpEaWQgeW91IHN0b3A/IE5vLCBJIGp1c3QgZHJvdmUg",
+			"YnkK",
+		));
+		let unknown_key = {
+			use rand::RngCore;
+			let mut v = vec![0; 16];
+			rand::thread_rng().fill_bytes(&mut v);
+			v
+		};
+		let encryptor = |prefix: &[u8]| {
+			let mut plaintext = Vec::with_capacity(prefix.len() + unknown_string.len());
+			plaintext.extend(&*prefix);
+			plaintext.extend(&unknown_string);
+			ecb_encrypt(aes_128_encrypt_block, 16, &unknown_key, &plaintext)
+		};
+
+		let block_size = determine_encryptor_block_size(encryptor);
+		assert_eq!(16, block_size);
+
+		let block_mode = detection_oracle(encryptor);
+		assert_eq!(BlockMode::ECB, block_mode);
+
+		let res = solve_ecb_postfix(encryptor, block_size);
+		println!("Set 2 Challenge 12: {}", bytes_to_string(&res).lines().next().unwrap().trim());
+		assert_eq!("b773748567cdff19e6a1a3bca9cb2c824568b06bfeeba026e82771a9c5307dc0", sha256str(&res));
 	}
 }
