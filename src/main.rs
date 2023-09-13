@@ -139,7 +139,7 @@ fn score_text(text: &str) -> f64 {
 
 fn hamming_distance(str1: &[u8], str2: &[u8]) -> usize {
 	let mut distance = 0;
-	for (b1, b2) in std::iter::zip(str1.as_ref(), str2.as_ref()) {
+	for (b1, b2) in std::iter::zip(str1, str2) {
 		distance += (b1 ^ b2).count_ones() as usize;
 	}
 	distance
@@ -153,7 +153,7 @@ fn chunked_average_distance(slice: &[u8], chunk_size: usize) -> f64 {
 		let block1 = blocks[i];
 		for j in (i+1)..blocks.len() {
 			let block2 = blocks[j];
-			total_distance += hamming_distance(&block1, &block2) as f64 / usize::min(block1.len(), block2.len()) as f64;
+			total_distance += hamming_distance(block1, block2) as f64 / usize::min(block1.len(), block2.len()) as f64;
 			num_comparisons += 1
 		}
 	}
@@ -269,7 +269,7 @@ where F: FnMut(&[u8], &[u8]) -> Vec<u8> {
 	let mut iv = iv.to_vec();
 
 	for ptb in padded.chunks(block_size) {
-		let xored = xor_encode(&ptb, &iv);
+		let xored = xor_encode(ptb, &iv);
 		let enc = ecb(key, &xored);
 		res.extend_from_slice(&enc);
 		iv = enc;
@@ -471,12 +471,12 @@ fn main() {
 		let cts: Vec<Vec<u8>> = std::fs::read_to_string("8.txt").unwrap().lines().map(bytes_from_hex).collect();
 
 		let mut ct_distances: Vec<_> = cts.iter()
-			.map(|ct| (ct, chunked_average_distance(&ct, 16)))
+			.map(|ct| (ct, chunked_average_distance(ct, 16)))
 			.collect();
 
 		ct_distances.sort_by(|ct_d1, ct_d2| ct_d1.1.total_cmp(&ct_d2.1).reverse());
 		let (ct, _distance) = ct_distances.pop().unwrap();
-		println!("Set 1 Challenge 8: {}?", sha256str(&ct));
+		println!("Set 1 Challenge 8: {}?", sha256str(ct));
 	}
 
 	{ // Set 2 Challenge 9
@@ -550,7 +550,7 @@ fn main() {
 		};
 		let encryptor = |prefix: &[u8]| {
 			let mut plaintext = Vec::with_capacity(prefix.len() + unknown_string.len());
-			plaintext.extend(&*prefix);
+			plaintext.extend(prefix);
 			plaintext.extend(&unknown_string);
 			ecb_encrypt(aes_128_encrypt_block, 16, &unknown_key, &plaintext)
 		};
