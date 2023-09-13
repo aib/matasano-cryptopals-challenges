@@ -225,6 +225,12 @@ fn aes_128_decrypt_block(key: &[u8], ciphertext: &[u8]) -> Vec<u8> {
 	block.to_vec()
 }
 
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+enum BlockMode {
+	ECB,
+	CBC
+}
+
 fn ecb_encrypt<F>(ecb: F, block_size: usize, key: &[u8], plaintext: &[u8]) -> Vec<u8>
 where F: Fn(&[u8], &[u8]) -> Vec<u8> {
 	let padded = pkcs7_pad_to_block_size(plaintext, block_size);
@@ -273,6 +279,51 @@ where F: Fn(&[u8], &[u8]) -> Vec<u8> {
 	}
 	pkcs7_unpad_in_place(&mut res);
 	res
+}
+
+fn encryption_oracle(input: &[u8]) -> (BlockMode, Vec<u8>) {
+	use rand::{Rng, RngCore};
+	let mut rng = rand::thread_rng();
+
+	let key = rng.gen::<[u8; 16]>();
+	let mut prefix = vec![0; rng.gen_range(1..=16)];
+	rng.fill_bytes(&mut prefix);
+	let mut postfix = vec![0; rng.gen_range(1..=16)];
+	rng.fill_bytes(&mut postfix);
+
+	let mut plaintext = Vec::with_capacity(prefix.len() + input.len() + postfix.len());
+	plaintext.extend(&prefix);
+	plaintext.extend(input);
+	plaintext.extend(&postfix);
+
+	match rng.gen::<bool>() {
+		false => {
+			(BlockMode::ECB, ecb_encrypt(aes_128_encrypt_block, 16, &key, &plaintext))
+		}
+		true => {
+			let mut iv = vec![0; 16];
+			rng.fill_bytes(&mut iv);
+			(BlockMode::CBC, cbc_encrypt(aes_128_encrypt_block, 16, &key, &iv, &plaintext))
+		}
+	}
+}
+
+fn detection_oracle<F>(bbox: F) -> BlockMode
+where F: FnOnce(&[u8]) -> Vec<u8> {
+	let carefully_crafted_input = vec![
+		01, 02, 03, 04, 05, 06, 07, 08, 09, 10, 11, 12, 13, 14, 15, 16,
+		01, 02, 03, 04, 05, 06, 07, 08, 09, 10, 11, 12, 13, 14, 15, 16,
+		01, 02, 03, 04, 05, 06, 07, 08, 09, 10, 11, 12, 13, 14, 15, 16,
+		01, 02, 03, 04, 05, 06, 07, 08, 09, 10, 11, 12, 13, 14, 15, 16,
+	];
+
+	let ct = bbox(&carefully_crafted_input);
+
+	if count_duplicate_blocks(&ct, 16) >= 2 {
+		BlockMode::ECB
+	} else {
+		BlockMode::CBC
+	}
 }
 
 fn main() {
@@ -396,5 +447,25 @@ fn main() {
 		let enc = cbc_encrypt(aes_128_encrypt_block, 16, &key, &iv, &msg);
 		let dec = cbc_decrypt(aes_128_decrypt_block, 16, &key, &iv, &enc);
 		assert_eq!(msg, dec);
+	}
+
+	{ // Set 2 Challenge 11
+		let iterations = 100;
+		let mut correct = 0;
+		for _ in 0..iterations {
+			let mut actual_mode = None;
+			let bbox = |input: &[u8]| {
+				let (mode, ct) = encryption_oracle(input);
+				actual_mode = Some(mode);
+				ct
+			};
+
+			let detected_mode = detection_oracle(bbox);
+			if actual_mode.is_some_and(|m| detected_mode == m) {
+				correct += 1;
+			}
+		}
+		println!("Set 2 Challenge 11: {}/{}", correct, iterations);
+		assert!(correct as f64 / iterations as f64 > 0.8);
 	}
 }
