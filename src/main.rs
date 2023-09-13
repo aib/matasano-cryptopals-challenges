@@ -160,7 +160,7 @@ fn count_duplicate_blocks(bytes: &[u8], block_size: usize) -> usize {
 	duplicates
 }
 
-fn solve_xor<F: Fn(&str) -> f64>(ciphertext: &[u8], keysize: usize, scorer: F) -> (Vec<u8>, Vec<u8>, f64) {
+fn solve_xor<F: FnMut(&str) -> f64>(ciphertext: &[u8], keysize: usize, mut scorer: F) -> (Vec<u8>, Vec<u8>, f64) {
 	if keysize == 0 {
 		return (vec![], vec![], scorer(""));
 	}
@@ -231,8 +231,8 @@ enum BlockMode {
 	CBC
 }
 
-fn ecb_encrypt<F>(ecb: F, block_size: usize, key: &[u8], plaintext: &[u8]) -> Vec<u8>
-where F: Fn(&[u8], &[u8]) -> Vec<u8> {
+fn ecb_encrypt<F>(mut ecb: F, block_size: usize, key: &[u8], plaintext: &[u8]) -> Vec<u8>
+where F: FnMut(&[u8], &[u8]) -> Vec<u8> {
 	let padded = pkcs7_pad_to_block_size(plaintext, block_size);
 	let mut res = Vec::with_capacity(padded.len());
 	for ptb in padded.chunks(block_size) {
@@ -241,8 +241,8 @@ where F: Fn(&[u8], &[u8]) -> Vec<u8> {
 	res
 }
 
-fn ecb_decrypt<F>(ecb: F, block_size: usize, key: &[u8], ciphertext: &[u8]) -> Vec<u8>
-where F: Fn(&[u8], &[u8]) -> Vec<u8> {
+fn ecb_decrypt<F>(mut ecb: F, block_size: usize, key: &[u8], ciphertext: &[u8]) -> Vec<u8>
+where F: FnMut(&[u8], &[u8]) -> Vec<u8> {
 	let mut res = Vec::with_capacity(ciphertext.len());
 	for ptb in ciphertext.chunks(block_size) {
 		res.extend_from_slice(&ecb(key, ptb));
@@ -251,8 +251,8 @@ where F: Fn(&[u8], &[u8]) -> Vec<u8> {
 	res
 }
 
-fn cbc_encrypt<F>(ecb: F, block_size: usize, key: &[u8], iv: &[u8], plaintext: &[u8]) -> Vec<u8>
-where F: Fn(&[u8], &[u8]) -> Vec<u8> {
+fn cbc_encrypt<F>(mut ecb: F, block_size: usize, key: &[u8], iv: &[u8], plaintext: &[u8]) -> Vec<u8>
+where F: FnMut(&[u8], &[u8]) -> Vec<u8> {
 	let padded = pkcs7_pad_to_block_size(plaintext, block_size);
 	let mut res = Vec::with_capacity(padded.len());
 	let mut iv = iv.to_vec();
@@ -266,8 +266,8 @@ where F: Fn(&[u8], &[u8]) -> Vec<u8> {
 	res
 }
 
-fn cbc_decrypt<F>(ecb: F, block_size: usize, key: &[u8], iv: &[u8], ciphertext: &[u8]) -> Vec<u8>
-where F: Fn(&[u8], &[u8]) -> Vec<u8> {
+fn cbc_decrypt<F>(mut ecb: F, block_size: usize, key: &[u8], iv: &[u8], ciphertext: &[u8]) -> Vec<u8>
+where F: FnMut(&[u8], &[u8]) -> Vec<u8> {
 	let mut res = Vec::with_capacity(ciphertext.len());
 	let mut iv = iv.clone();
 
