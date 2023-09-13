@@ -29,6 +29,12 @@ fn bytes_to_string(bs: &[u8]) -> String {
 	String::from_utf8_lossy(bs).into_owned()
 }
 
+fn bytes_to_summary(bs: &[u8]) -> String {
+	let s = bytes_to_string(bs);
+	let lines: Vec<_> = s.lines().collect();
+	format!("{} ({} lines(s), {} char(s), SHA256: {})", lines[0].trim(), lines.len(), s.len(), sha256str(bs))
+}
+
 fn sha256str(bs: &[u8]) -> String {
 	let digest = openssl::hash::hash(openssl::hash::MessageDigest::sha256(), bs)
 		.expect("Unable to hash");
@@ -402,7 +408,7 @@ fn main() {
 	{ // Set 1 Challenge 3
 		let ciphertext = bytes_from_hex("1b37373331363f78151b7f2b783431333d78397828372d363c78373e783a393b3736");
 		let (key, text, _score) = solve_xor(&ciphertext, 1, score_text);
-		println!("Set 1 Challenge 3: {} (key 0x{})", bytes_to_string(&text), bytes_to_hex(&key));
+		println!("Set 1 Challenge 3: {} (key 0x{})", bytes_to_summary(&text), bytes_to_hex(&key));
 	}
 
 	{ // Set 1 Challenge 4
@@ -413,7 +419,7 @@ fn main() {
 			.collect();
 		scored.sort_by(|l_kts1, l_kts2| l_kts1.1.2.total_cmp(&l_kts2.1.2));
 		let (line_no, (key, text, _score)) = scored.pop().unwrap();
-		println!("Set 1 Challenge 4: {} (line {}, key 0x{})", bytes_to_string(&text).trim(), line_no + 1, bytes_to_hex(&key));
+		println!("Set 1 Challenge 4: {} (line {}, key 0x{})", bytes_to_summary(&text), line_no + 1, bytes_to_hex(&key));
 	}
 
 	{ // Set 1 Challenge 5
@@ -448,7 +454,7 @@ fn main() {
 			.flatten()
 			.collect::<Vec<_>>();
 
-		println!("Set 1 Challenge 6: {} (key 0x{})", bytes_to_string(&text).lines().next().unwrap().trim(), bytes_to_hex(&key));
+		println!("Set 1 Challenge 6: {} (key 0x{})", bytes_to_summary(&text), bytes_to_hex(&key));
 		assert_eq!("24df84533fc2778495577c844bcf3fe1d4d17c68d8c5cbc5a308286db58c69b6", sha256str(&text));
 	}
 
@@ -457,7 +463,7 @@ fn main() {
 		let cipher = openssl::symm::Cipher::aes_128_ecb();
 
 		let res = openssl::symm::decrypt(cipher, b"YELLOW SUBMARINE", None, &bs).unwrap();
-		println!("Set 1 Challenge 7: {}", bytes_to_string(&res).lines().next().unwrap().trim());
+		println!("Set 1 Challenge 7: {}", bytes_to_summary(&res));
 		assert_eq!("24df84533fc2778495577c844bcf3fe1d4d17c68d8c5cbc5a308286db58c69b6", sha256str(&res));
 	}
 
@@ -482,7 +488,7 @@ fn main() {
 	{ // Set 2 Challenge 10
 		let ciphertext = bytes_from_base64(&std::fs::read_to_string("10.txt").unwrap());
 		let dec = cbc_decrypt(aes_128_decrypt_block, 16, b"YELLOW SUBMARINE", &[0; 16], &ciphertext);
-		println!("Set 2 Challenge 10: {}", bytes_to_string(&dec).lines().next().unwrap().trim());
+		println!("Set 2 Challenge 10: {}", bytes_to_summary(&dec));
 		assert_eq!("24df84533fc2778495577c844bcf3fe1d4d17c68d8c5cbc5a308286db58c69b6", sha256str(&dec));
 	}
 
@@ -556,7 +562,7 @@ fn main() {
 		assert_eq!(BlockMode::ECB, block_mode);
 
 		let res = solve_ecb_postfix(encryptor, block_size);
-		println!("Set 2 Challenge 12: {}", bytes_to_string(&res).lines().next().unwrap().trim());
+		println!("Set 2 Challenge 12: {}", bytes_to_summary(&res));
 		assert_eq!("b773748567cdff19e6a1a3bca9cb2c824568b06bfeeba026e82771a9c5307dc0", sha256str(&res));
 	}
 }
