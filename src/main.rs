@@ -380,12 +380,8 @@ where F: FnMut(&[u8]) -> Vec<u8> {
 		encmap.get(get_nth_block(&enc, block_size, block_num)).copied()
 	};
 
-	loop {
-		if let Some(next_byte) = get_next_byte(block_size, &known_postfix) {
-			known_postfix.push(next_byte);
-		} else {
-			break;
-		}
+	while let Some(next_byte) = get_next_byte(block_size, &known_postfix) {
+		known_postfix.push(next_byte);
 	}
 
 	known_postfix.pop(); // We always end up with padding
