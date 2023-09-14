@@ -1,6 +1,8 @@
 use std::collections::{HashMap, HashSet};
 use std::hash::Hash;
 
+use indexmap::IndexMap;
+
 fn bytes_from_hex(hstr: &str) -> Vec<u8> {
 	hex::decode(hstr).expect("Error decoding hex")
 }
@@ -388,6 +390,50 @@ where F: FnMut(&[u8]) -> Vec<u8> {
 	known_postfix
 }
 
+fn parse_kv(kv_str: &str) -> IndexMap<String, String> {
+	let mut map = IndexMap::new();
+	for kv in kv_str.split("&") {
+		if let Some(i) = kv.find("=") {
+			let (k, v) = (&kv[0..i], &kv[i+1..]);
+			map.insert(k.to_owned(), v.to_owned());
+		}
+	}
+	map
+}
+
+fn encode_kv(kvm: &IndexMap<String, String>) -> String {
+	kvm.iter().map(|(k, v)| format!("{}={}", k, v)).collect::<Vec<_>>().join("&")
+}
+
+fn profile_for(email: &str) -> IndexMap<String, String> {
+	let email = email.replace("=", "").replace("&", "");
+
+	IndexMap::from([
+		(String::from("email"), email),
+		(String::from("uid"), String::from("10")),
+		(String::from("role"), String::from("user")),
+	])
+}
+
+fn solve_profile_generator<F>(mut bbox: F) -> Vec<u8>
+where F: FnMut(&str) -> Vec<u8> {
+	// Note: This assumes we know the original and target plaintext, the section to change is at the end, and we can use PKCS#7 padding in the e-mail
+
+	// email=foo@bar.com&uid=10&role=user -> email=foo@bar.com&uid=10&role=admin
+	// 0123456789abcdef0123456789abcdef01    0123456789abcdef0123456789abcdef012
+	let email_prefix = b"blockalign"; // anything 10 bytes
+	let admin_block = pkcs7_pad_to_block_size(b"admin", 16);
+
+	let email = bytes_to_string(&[email_prefix.as_slice(), &admin_block].concat());
+	let admin_block_enc = get_nth_block(&bbox(&email), 16, 1).to_vec();
+
+	let aligning_email = bytes_to_string(b"foo+a@bar.com");
+	let aligned_profile_enc = bbox(&aligning_email);
+	let other_blocks_enc = &aligned_profile_enc[0..32];
+
+	[other_blocks_enc, &admin_block_enc].concat()
+}
+
 fn main() {
 	{ // Set 1 Challenge 1
 		let num = bytes_from_hex("49276d206b696c6c696e6720796f757220627261696e206c696b65206120706f69736f6e6f7573206d757368726f6f6d");
@@ -560,5 +606,32 @@ fn main() {
 		let res = solve_ecb_postfix(encryptor, block_size);
 		println!("Set 2 Challenge 12: {}", bytes_to_summary(&res));
 		assert_eq!("b773748567cdff19e6a1a3bca9cb2c824568b06bfeeba026e82771a9c5307dc0", sha256str(&res));
+	}
+
+	{ // Set 2 Challenge 13
+		let parsed = parse_kv("foo=bar&baz=qux&zap=zazzle");
+		assert_eq!(
+			IndexMap::from([
+				(String::from("foo"), String::from("bar")),
+				(String::from("baz"), String::from("qux")),
+				(String::from("zap"), String::from("zazzle")),
+			]),
+			parsed
+		);
+		let user = profile_for("foo@bar.com");
+		assert_eq!("email=foo@bar.com&uid=10&role=user", encode_kv(&user));
+		let unknown_key = {
+			use rand::RngCore;
+			let mut v = vec![0; 16];
+			rand::thread_rng().fill_bytes(&mut v);
+			v
+		};
+		let profile_oracle = |email: &str| {
+			ecb_encrypt(aes_128_encrypt_block, 16, &unknown_key, &bytes_from_str(&encode_kv(&profile_for(email))))
+		};
+		let res_ct = solve_profile_generator(profile_oracle);
+		let res_str = bytes_to_string(&ecb_decrypt(aes_128_decrypt_block, 16, &unknown_key, &res_ct));
+		println!("Set 2 Challenge 13: {}", res_str);
+		assert_eq!(Some(&String::from("admin")), parse_kv(&res_str).get("role"));
 	}
 }
