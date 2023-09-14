@@ -249,7 +249,7 @@ where F: FnMut(&[u8], &[u8]) -> Vec<u8> {
 	let padded = pkcs7_pad_to_block_size(plaintext, block_size);
 	let mut res = Vec::with_capacity(padded.len());
 	for ptb in padded.chunks(block_size) {
-		res.extend_from_slice(&ecb(key, ptb));
+		res.extend(&ecb(key, ptb));
 	}
 	res
 }
@@ -258,7 +258,7 @@ fn ecb_decrypt<F>(mut ecb: F, block_size: usize, key: &[u8], ciphertext: &[u8]) 
 where F: FnMut(&[u8], &[u8]) -> Vec<u8> {
 	let mut res = Vec::with_capacity(ciphertext.len());
 	for ptb in ciphertext.chunks(block_size) {
-		res.extend_from_slice(&ecb(key, ptb));
+		res.extend(&ecb(key, ptb));
 	}
 	pkcs7_unpad_in_place(&mut res);
 	res
@@ -273,7 +273,7 @@ where F: FnMut(&[u8], &[u8]) -> Vec<u8> {
 	for ptb in padded.chunks(block_size) {
 		let xored = xor_encode(ptb, &iv);
 		let enc = ecb(key, &xored);
-		res.extend_from_slice(&enc);
+		res.extend(&enc);
 		iv = enc;
 	}
 	res
@@ -304,10 +304,7 @@ fn encryption_oracle(input: &[u8]) -> (BlockMode, Vec<u8>) {
 	let mut postfix = vec![0; rng.gen_range(1..=16)];
 	rng.fill_bytes(&mut postfix);
 
-	let mut plaintext = Vec::with_capacity(prefix.len() + input.len() + postfix.len());
-	plaintext.extend(&prefix);
-	plaintext.extend(input);
-	plaintext.extend(&postfix);
+	let plaintext = [&prefix, input, &postfix].concat();
 
 	match rng.gen::<bool>() {
 		false => {
@@ -365,11 +362,8 @@ where F: FnMut(&[u8]) -> Vec<u8> {
 	let mut get_next_byte = |block_size: usize, known_postfix: &[u8]| -> Option<u8> {
 		let (block_num, block_offset) = (known_postfix.len() / block_size, known_postfix.len() % block_size);
 
-		let mut block = Vec::with_capacity(block_size);
 		let zeroes = vec![0; block_size - 1 - block_offset];
-		block.extend(&zeroes);
-		block.extend(known_postfix);
-		block.push(0);
+		let mut block = [&zeroes, known_postfix, &[0]].concat();
 
 		let encmap: HashMap<Vec<u8>, u8> = HashMap::from_iter(
 			(0..=255).map(|b| {
@@ -591,9 +585,7 @@ fn main() {
 			v
 		};
 		let encryptor = |prefix: &[u8]| {
-			let mut plaintext = Vec::with_capacity(prefix.len() + unknown_string.len());
-			plaintext.extend(prefix);
-			plaintext.extend(&unknown_string);
+			let plaintext = [prefix, &unknown_string].concat();
 			ecb_encrypt(aes_128_encrypt_block, 16, &unknown_key, &plaintext)
 		};
 
