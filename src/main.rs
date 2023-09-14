@@ -318,6 +318,23 @@ fn encryption_oracle(input: &[u8]) -> (BlockMode, Vec<u8>) {
 	}
 }
 
+fn detect_output_size_change<F>(mut processor: F) -> (usize, usize, usize)
+where F: FnMut(&[u8]) -> Vec<u8> {
+	let mut input = Vec::new();
+	let mut last_size = None;
+	loop {
+		let ct = processor(&input);
+		let new_size = ct.len();
+		if let Some(ls) = last_size {
+			if new_size != ls {
+				return (ls, new_size, input.len());
+			}
+		}
+		last_size = Some(new_size);
+		input.push(0);
+	}
+}
+
 fn detection_oracle<F>(bbox: F) -> BlockMode
 where F: FnOnce(&[u8]) -> Vec<u8> {
 	let carefully_crafted_input = vec![
@@ -336,21 +353,10 @@ where F: FnOnce(&[u8]) -> Vec<u8> {
 	}
 }
 
-fn determine_encryptor_block_size<F>(mut ecb: F) -> usize
+fn determine_encryptor_block_size<F>(ecb: F) -> usize
 where F: FnMut(&[u8]) -> Vec<u8> {
-	let mut pt = Vec::new();
-	let mut last_size = None;
-
-	loop {
-		let ct = ecb(&pt);
-		if let Some(ls) = last_size {
-			if ct.len() != ls {
-				return ct.len() - ls;
-			}
-		}
-		last_size = Some(ct.len());
-		pt.push(0);
-	}
+	let (old, new, _) = detect_output_size_change(ecb);
+	new - old
 }
 
 fn solve_ecb_postfix<F>(mut ecb: F, block_size: usize) -> Vec<u8>
