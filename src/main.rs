@@ -359,27 +359,36 @@ where F: FnMut(&[u8]) -> Vec<u8> {
 	new - old
 }
 
-fn solve_ecb_postfix<F>(mut ecb: F, block_size: usize) -> Vec<u8>
+fn solve_ecb_postfix<F>(ecb: F, block_size: usize) -> Vec<u8>
+where F: FnMut(&[u8]) -> Vec<u8> {
+	return solve_ecb_postfix_with_prefix(ecb, block_size, 0);
+}
+
+fn solve_ecb_postfix_with_prefix<F>(mut ecb: F, block_size: usize, prefix_len: usize) -> Vec<u8>
 where F: FnMut(&[u8]) -> Vec<u8> {
 	assert!(block_size > 0, "block_size is 0");
 
 	let mut known_postfix = Vec::new();
 
 	let mut get_next_byte = |block_size: usize, known_postfix: &[u8]| -> Option<u8> {
-		let (block_num, block_offset) = (known_postfix.len() / block_size, known_postfix.len() % block_size);
+		let prepad: Vec<u8> = vec![0; block_size - (prefix_len % block_size)];
+		let zeroes = vec![0; block_size - (known_postfix.len() % block_size) - 1];
 
-		let zeroes = vec![0; block_size - 1 - block_offset];
-		let mut block = [&zeroes, known_postfix, &[0]].concat();
+		let output_block_num = (prefix_len + prepad.len() + zeroes.len() + known_postfix.len()) / block_size;
+
+		let mut crafted_block = [&prepad, &zeroes, known_postfix, &[0]].concat();
+		let next_byte_offset = prepad.len() + zeroes.len() + known_postfix.len();
 
 		let encmap: HashMap<Vec<u8>, u8> = HashMap::from_iter(
 			(0..=255).map(|b| {
-				block[block_num * block_size + block_size - 1] = b;
-				let enc = ecb(&block);
-				(get_nth_block(&enc, block_size, block_num).to_vec(), b)
+				crafted_block[next_byte_offset] = b;
+				let enc = ecb(&crafted_block);
+				(get_nth_block(&enc, block_size, output_block_num).to_vec(), b)
 			})
 		);
-		let enc = ecb(&zeroes);
-		encmap.get(get_nth_block(&enc, block_size, block_num)).copied()
+		let input_block: Vec<u8> = [&prepad[..], &zeroes].concat();
+		let enc = ecb(&input_block);
+		encmap.get(get_nth_block(&enc, block_size, output_block_num)).copied()
 	};
 
 	while let Some(next_byte) = get_next_byte(block_size, &known_postfix) {
@@ -388,6 +397,40 @@ where F: FnMut(&[u8]) -> Vec<u8> {
 
 	known_postfix.pop(); // We always end up with padding
 	known_postfix
+}
+
+fn determine_prefix_length<F>(mut ecb: F, block_size: usize) -> usize
+where F: FnMut(&[u8]) -> Vec<u8> {
+	let mut indicator = Vec::new();
+	let mut last_first_diff_block = None;
+
+	for _ in 0..block_size+1 {
+		indicator.push(0);
+
+		let ilen = indicator.len();
+		indicator[ilen - 1] = 0;
+		let ct1 = ecb(&indicator);
+		indicator[ilen - 1] = 0xff;
+		let ct2 = ecb(&indicator);
+
+		let cur_first_diff_block = std::iter::zip(ct1.chunks(block_size), ct2.chunks(block_size))
+			.take_while(|(b1, b2)| b1 == b2)
+			.count();
+
+		if let Some(last) = last_first_diff_block {
+			if last != cur_first_diff_block {
+				return (last * block_size) + block_size + 1 - ilen;
+			}
+		}
+		last_first_diff_block = Some(cur_first_diff_block);
+	}
+	panic!("Ciphertext block did not change after {} iterations. Wrong block size?", block_size+1)
+}
+
+fn solve_ecb_postfix_harder<F>(mut ecb: F, block_size: usize) -> Vec<u8>
+where F: FnMut(&[u8]) -> Vec<u8> {
+	let prefix_length = determine_prefix_length(&mut ecb, block_size);
+	solve_ecb_postfix_with_prefix(&mut ecb, block_size, prefix_length)
 }
 
 fn parse_kv(kv_str: &str) -> IndexMap<String, String> {
@@ -631,5 +674,33 @@ fn main() {
 		let res_str = bytes_to_string(&ecb_decrypt(aes_128_decrypt_block, 16, &unknown_key, &res_ct));
 		println!("Set 2 Challenge 13: {}", res_str);
 		assert_eq!(Some(&String::from("admin")), parse_kv(&res_str).get("role"));
+	}
+
+	{ // Set 2 Challenge 14
+		let unknown_string = bytes_from_base64(concat!(
+			"Um9sbGluJyBpbiBteSA1LjAKV2l0aCBteSByYWctdG9wIGRvd24gc28gbXkg",
+			"aGFpciBjYW4gYmxvdwpUaGUgZ2lybGllcyBvbiBzdGFuZGJ5IHdhdmluZyBq",
+			"dXN0IHRvIHNheSBoaQpEaWQgeW91IHN0b3A/IE5vLCBJIGp1c3QgZHJvdmUg",
+			"YnkK",
+		));
+		let unknown_key = {
+			use rand::RngCore;
+			let mut v = vec![0; 16];
+			rand::thread_rng().fill_bytes(&mut v);
+			v
+		};
+		let random_prefix = {
+			use rand::{Rng, RngCore};
+			let mut v = vec![0; rand::thread_rng().gen_range(0..=32)];
+			rand::thread_rng().fill_bytes(&mut v);
+			v
+		};
+		let encryptor = |attacker_controlled: &[u8]| {
+			let plaintext = [&random_prefix, attacker_controlled, &unknown_string].concat();
+			ecb_encrypt(aes_128_encrypt_block, 16, &unknown_key, &plaintext)
+		};
+		let res = solve_ecb_postfix_harder(encryptor, 16);
+		println!("Set 2 Challenge 14: {}", bytes_to_summary(&res));
+		assert_eq!("b773748567cdff19e6a1a3bca9cb2c824568b06bfeeba026e82771a9c5307dc0", sha256str(&res));
 	}
 }
