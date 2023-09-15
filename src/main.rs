@@ -212,6 +212,18 @@ fn pkcs7_pad(bytes: &[u8], size: usize) -> Vec<u8> {
 	vec
 }
 
+fn pkcs7_unpad(bytes: &[u8]) -> Option<Vec<u8>> {
+	let pad = *bytes.last()?;
+	let mut vec = bytes.to_vec();
+	for _ in 0..pad {
+		let b = vec.pop()?;
+		if b != pad {
+			return None;
+		}
+	}
+	Some(vec)
+}
+
 fn pkcs7_pad_to_block_size(bytes: &[u8], block_size: usize) -> Vec<u8> {
 	let pad = block_size - (bytes.len() % block_size);
 	pkcs7_pad(bytes, bytes.len() + pad)
@@ -702,5 +714,14 @@ fn main() {
 		let res = solve_ecb_postfix_harder(encryptor, 16);
 		println!("Set 2 Challenge 14: {}", bytes_to_summary(&res));
 		assert_eq!("b773748567cdff19e6a1a3bca9cb2c824568b06bfeeba026e82771a9c5307dc0", sha256str(&res));
+	}
+
+	{ // Set 2 Challenge 15
+		let res = pkcs7_unpad(b"ICE ICE BABY\x04\x04\x04\x04").unwrap();
+		println!("Set 2 Challenge 15: {}", bytes_to_string(&res));
+		assert_eq!(b"ICE ICE BABY".to_vec(), res);
+
+		assert_eq!(None, pkcs7_unpad(b"ICE ICE BABY\x05\x05\x05\x05"));
+		assert_eq!(None, pkcs7_unpad(b"ICE ICE BABY\x01\x02\x03\x04"));
 	}
 }
