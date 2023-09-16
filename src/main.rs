@@ -31,6 +31,10 @@ fn bytes_to_string(bs: &[u8]) -> String {
 	String::from_utf8_lossy(bs).into_owned()
 }
 
+fn bytes_to_safe_string(bs: &[u8]) -> String {
+	bytes_to_string(bs).chars().map(|c| if c == ' ' || c.is_ascii_graphic() { c } else { '?' }).collect()
+}
+
 fn bytes_to_summary(bs: &[u8]) -> String {
 	let s = bytes_to_string(bs);
 	let lines: Vec<_> = s.lines().collect();
@@ -489,6 +493,14 @@ where F: FnMut(&str) -> Vec<u8> {
 	[other_blocks_enc, &admin_block_enc].concat()
 }
 
+fn solve_cbc_with_bitflip<F>(mut cbc: F) -> Vec<u8>
+where F: FnMut(&[u8]) -> Vec<u8> {
+	let almost = b"nodata:admin=true".to_vec();
+	let mut almost_enc = cbc(&almost);
+	almost_enc[22] ^= 1;
+	almost_enc
+}
+
 fn main() {
 	{ // Set 1 Challenge 1
 		let num = bytes_from_hex("49276d206b696c6c696e6720796f757220627261696e206c696b65206120706f69736f6e6f7573206d757368726f6f6d");
@@ -723,5 +735,33 @@ fn main() {
 
 		assert_eq!(None, pkcs7_unpad(b"ICE ICE BABY\x05\x05\x05\x05"));
 		assert_eq!(None, pkcs7_unpad(b"ICE ICE BABY\x01\x02\x03\x04"));
+	}
+
+	{ // Set 2 Challenge 16
+		let key = {
+			use rand::RngCore;
+			let mut v = vec![0; 16];
+			rand::thread_rng().fill_bytes(&mut v);
+			v
+		};
+		let iv = {
+			use rand::RngCore;
+			let mut v = vec![0; 16];
+			rand::thread_rng().fill_bytes(&mut v);
+			v
+		};
+		let encryptor = |userdata: &[u8]| {
+			let escaped = bytes_to_string(userdata)
+				.replace("\\", "\\\\").replace(";", "\\;").replace("\"", "\\\"");
+			let s = format!("comment1=cooking%20MCs;userdata={};comment2=%20like%20a%20pound%20of%20bacon", escaped);
+			cbc_encrypt(aes_128_encrypt_block, 16, &key, &iv, &bytes_from_str(&s))
+		};
+		let decryptor = |ciphertext: &[u8]| {
+			cbc_decrypt(aes_128_decrypt_block, 16, &key, &iv, ciphertext)
+		};
+		let res = solve_cbc_with_bitflip(encryptor);
+		let dec = decryptor(&res);
+		println!("Set 2 Challenge 16: {}", bytes_to_safe_string(&dec));
+		assert!(bytes_to_string(&dec).contains(";admin=true;"));
 	}
 }
