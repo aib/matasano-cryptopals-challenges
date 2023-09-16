@@ -47,6 +47,13 @@ fn sha256str(bs: &[u8]) -> String {
 	bytes_to_hex(&digest)
 }
 
+fn get_random_bytes(size: usize) -> Vec<u8> {
+	use rand::RngCore;
+	let mut v = vec![0; size];
+	rand::thread_rng().fill_bytes(&mut v);
+	v
+}
+
 fn get_nth_block(bytes: &[u8], block_size: usize, n: usize) -> &[u8] {
 	let block_offset = n * block_size;
 	&bytes[usize::min(block_offset, bytes.len()) .. usize::min(block_offset + block_size, bytes.len())]
@@ -311,15 +318,12 @@ where F: FnMut(&[u8], &[u8]) -> Vec<u8> {
 }
 
 fn encryption_oracle(input: &[u8]) -> (BlockMode, Vec<u8>) {
-	use rand::{Rng, RngCore};
+	use rand::Rng;
 	let mut rng = rand::thread_rng();
 
 	let key = rng.gen::<[u8; 16]>();
-	let mut prefix = vec![0; rng.gen_range(1..=16)];
-	rng.fill_bytes(&mut prefix);
-	let mut postfix = vec![0; rng.gen_range(1..=16)];
-	rng.fill_bytes(&mut postfix);
-
+	let prefix = get_random_bytes(rng.gen_range(1..=16));
+	let postfix = get_random_bytes(rng.gen_range(1..=16));
 	let plaintext = [&prefix, input, &postfix].concat();
 
 	match rng.gen::<bool>() {
@@ -327,8 +331,7 @@ fn encryption_oracle(input: &[u8]) -> (BlockMode, Vec<u8>) {
 			(BlockMode::ECB, ecb_encrypt(aes_128_encrypt_block, 16, &key, &plaintext))
 		}
 		true => {
-			let mut iv = vec![0; 16];
-			rng.fill_bytes(&mut iv);
+			let iv = get_random_bytes(16);
 			(BlockMode::CBC, cbc_encrypt(aes_128_encrypt_block, 16, &key, &iv, &plaintext))
 		}
 	}
@@ -651,12 +654,7 @@ fn main() {
 			"dXN0IHRvIHNheSBoaQpEaWQgeW91IHN0b3A/IE5vLCBJIGp1c3QgZHJvdmUg",
 			"YnkK",
 		));
-		let unknown_key = {
-			use rand::RngCore;
-			let mut v = vec![0; 16];
-			rand::thread_rng().fill_bytes(&mut v);
-			v
-		};
+		let unknown_key = get_random_bytes(16);
 		let encryptor = |prefix: &[u8]| {
 			let plaintext = [prefix, &unknown_string].concat();
 			ecb_encrypt(aes_128_encrypt_block, 16, &unknown_key, &plaintext)
@@ -685,12 +683,7 @@ fn main() {
 		);
 		let user = profile_for("foo@bar.com");
 		assert_eq!("email=foo@bar.com&uid=10&role=user", encode_kv(&user));
-		let unknown_key = {
-			use rand::RngCore;
-			let mut v = vec![0; 16];
-			rand::thread_rng().fill_bytes(&mut v);
-			v
-		};
+		let unknown_key = get_random_bytes(16);
 		let profile_oracle = |email: &str| {
 			ecb_encrypt(aes_128_encrypt_block, 16, &unknown_key, &bytes_from_str(&encode_kv(&profile_for(email))))
 		};
@@ -707,12 +700,7 @@ fn main() {
 			"dXN0IHRvIHNheSBoaQpEaWQgeW91IHN0b3A/IE5vLCBJIGp1c3QgZHJvdmUg",
 			"YnkK",
 		));
-		let unknown_key = {
-			use rand::RngCore;
-			let mut v = vec![0; 16];
-			rand::thread_rng().fill_bytes(&mut v);
-			v
-		};
+		let unknown_key = get_random_bytes(16);
 		let random_prefix = {
 			use rand::{Rng, RngCore};
 			let mut v = vec![0; rand::thread_rng().gen_range(0..=32)];
@@ -738,18 +726,8 @@ fn main() {
 	}
 
 	{ // Set 2 Challenge 16
-		let key = {
-			use rand::RngCore;
-			let mut v = vec![0; 16];
-			rand::thread_rng().fill_bytes(&mut v);
-			v
-		};
-		let iv = {
-			use rand::RngCore;
-			let mut v = vec![0; 16];
-			rand::thread_rng().fill_bytes(&mut v);
-			v
-		};
+		let key = get_random_bytes(16);
+		let iv = get_random_bytes(16);
 		let encryptor = |userdata: &[u8]| {
 			let escaped = bytes_to_string(userdata)
 				.replace("\\", "\\\\").replace(";", "\\;").replace("\"", "\\\"");
