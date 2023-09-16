@@ -267,48 +267,48 @@ enum BlockMode {
 	CBC
 }
 
-fn ecb_encrypt<F>(mut ecb: F, block_size: usize, key: &[u8], plaintext: &[u8]) -> Vec<u8>
-where F: FnMut(&[u8], &[u8]) -> Vec<u8> {
+fn ecb_encrypt<E>(mut enc: E, block_size: usize, key: &[u8], plaintext: &[u8]) -> Vec<u8>
+where E: FnMut(&[u8], &[u8]) -> Vec<u8> {
 	let padded = pkcs7_pad_to_block_size(plaintext, block_size);
 	let mut res = Vec::with_capacity(padded.len());
 	for ptb in padded.chunks(block_size) {
-		res.extend(&ecb(key, ptb));
+		res.extend(&enc(key, ptb));
 	}
 	res
 }
 
-fn ecb_decrypt<F>(mut ecb: F, block_size: usize, key: &[u8], ciphertext: &[u8]) -> Vec<u8>
-where F: FnMut(&[u8], &[u8]) -> Vec<u8> {
+fn ecb_decrypt<D>(mut dec: D, block_size: usize, key: &[u8], ciphertext: &[u8]) -> Vec<u8>
+where D: FnMut(&[u8], &[u8]) -> Vec<u8> {
 	let mut res = Vec::with_capacity(ciphertext.len());
 	for ptb in ciphertext.chunks(block_size) {
-		res.extend(&ecb(key, ptb));
+		res.extend(&dec(key, ptb));
 	}
 	pkcs7_unpad_in_place(&mut res);
 	res
 }
 
-fn cbc_encrypt<F>(mut ecb: F, block_size: usize, key: &[u8], iv: &[u8], plaintext: &[u8]) -> Vec<u8>
-where F: FnMut(&[u8], &[u8]) -> Vec<u8> {
+fn cbc_encrypt<E>(mut enc: E, block_size: usize, key: &[u8], iv: &[u8], plaintext: &[u8]) -> Vec<u8>
+where E: FnMut(&[u8], &[u8]) -> Vec<u8> {
 	let padded = pkcs7_pad_to_block_size(plaintext, block_size);
 	let mut res = Vec::with_capacity(padded.len());
 	let mut iv = iv.to_vec();
 
 	for ptb in padded.chunks(block_size) {
 		let xored = xor_encode(ptb, &iv);
-		let enc = ecb(key, &xored);
-		res.extend(&enc);
-		iv = enc;
+		let eout = enc(key, &xored);
+		res.extend(&eout);
+		iv = eout;
 	}
 	res
 }
 
-fn cbc_decrypt<F>(mut ecb: F, block_size: usize, key: &[u8], iv: &[u8], ciphertext: &[u8]) -> Vec<u8>
-where F: FnMut(&[u8], &[u8]) -> Vec<u8> {
+fn cbc_decrypt<D>(mut dec: D, block_size: usize, key: &[u8], iv: &[u8], ciphertext: &[u8]) -> Vec<u8>
+where D: FnMut(&[u8], &[u8]) -> Vec<u8> {
 	let mut res = Vec::with_capacity(ciphertext.len());
 	let mut iv = iv.clone();
 
 	for ctb in ciphertext.chunks(block_size) {
-		let bdec = ecb(key, ctb);
+		let bdec = dec(key, ctb);
 		let xordec = xor_encode(&bdec, &iv);
 		res.extend(xordec);
 		iv = ctb;
@@ -372,9 +372,9 @@ where F: FnOnce(&[u8]) -> Vec<u8> {
 	}
 }
 
-fn determine_encryptor_block_size<F>(ecb: F) -> usize
-where F: FnMut(&[u8]) -> Vec<u8> {
-	let (old, new, _) = detect_output_size_change(ecb);
+fn determine_encryptor_block_size<E>(enc: E) -> usize
+where E: FnMut(&[u8]) -> Vec<u8> {
+	let (old, new, _) = detect_output_size_change(enc);
 	new - old
 }
 
