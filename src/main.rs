@@ -302,7 +302,7 @@ where E: FnMut(&[u8], &[u8]) -> Vec<u8> {
 	res
 }
 
-fn cbc_decrypt<D>(mut dec: D, block_size: usize, key: &[u8], iv: &[u8], ciphertext: &[u8]) -> Vec<u8>
+fn cbc_decrypt_no_unpad<D>(mut dec: D, block_size: usize, key: &[u8], iv: &[u8], ciphertext: &[u8]) -> Vec<u8>
 where D: FnMut(&[u8], &[u8]) -> Vec<u8> {
 	let mut res = Vec::with_capacity(ciphertext.len());
 	let mut iv = iv.clone();
@@ -313,8 +313,20 @@ where D: FnMut(&[u8], &[u8]) -> Vec<u8> {
 		res.extend(xordec);
 		iv = ctb;
 	}
+	res
+}
+
+fn cbc_decrypt<D>(dec: D, block_size: usize, key: &[u8], iv: &[u8], ciphertext: &[u8]) -> Vec<u8>
+where D: FnMut(&[u8], &[u8]) -> Vec<u8> {
+	let mut res = cbc_decrypt_no_unpad(dec, block_size, key, iv, ciphertext);
 	pkcs7_unpad_in_place(&mut res);
 	res
+}
+
+fn cbc_decrypt_check_pad<D>(dec: D, block_size: usize, key: &[u8], iv: &[u8], ciphertext: &[u8]) -> Option<Vec<u8>>
+where D: FnMut(&[u8], &[u8]) -> Vec<u8> {
+	let res = cbc_decrypt_no_unpad(dec, block_size, key, iv, ciphertext);
+	pkcs7_unpad(&res)
 }
 
 fn encryption_oracle(input: &[u8]) -> (BlockMode, Vec<u8>) {
