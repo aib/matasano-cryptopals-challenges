@@ -225,6 +225,10 @@ fn pkcs7_pad(bytes: &[u8], size: usize) -> Vec<u8> {
 
 fn pkcs7_unpad(bytes: &[u8]) -> Option<Vec<u8>> {
 	let pad = *bytes.last()?;
+	if pad == 0 {
+		return None;
+	}
+
 	let mut vec = bytes.to_vec();
 	for _ in 0..pad {
 		let b = vec.pop()?;
