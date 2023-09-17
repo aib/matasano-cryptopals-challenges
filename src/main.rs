@@ -520,6 +520,82 @@ where F: FnMut(&[u8]) -> Vec<u8> {
 	almost_enc
 }
 
+fn solve_cbc_with_padding_oracle<O>(mut check_padding: O, iv: &[u8], ciphertext: &[u8]) -> Vec<u8>
+where O: FnMut(&[u8], &[u8]) -> bool {
+	#[derive(Clone)]
+	struct Input {
+		iv: Vec<u8>,
+		ct: Vec<u8>,
+	}
+
+	impl Input {
+		fn get_byte_for_output(&self, output_offset: usize) -> u8 {
+			if output_offset < 16 {
+				self.iv[output_offset]
+			} else {
+				self.ct[output_offset - 16]
+			}
+		}
+
+		fn set_byte_for_output(&mut self, output_offset: usize, bval: u8) {
+			if output_offset < 16 {
+				self.iv[output_offset] = bval;
+			} else {
+				self.ct[output_offset - 16] = bval;
+			}
+		}
+
+		fn change_byte_for_output<F>(&mut self, output_offset: usize, mutator: F)
+		where F: FnOnce(u8) -> u8 {
+			self.set_byte_for_output(output_offset, mutator(self.get_byte_for_output(output_offset)));
+		}
+	}
+
+	let mut known_end = vec![];
+
+	let mut get_next_byte = |known_end: &[u8]| {
+		if known_end.len() >= ciphertext.len() {
+			return None;
+		}
+
+		let ct_cutoff = ciphertext.len() - (known_end.len() / 16) * 16;
+		let mut work_input = Input {
+			iv: iv.to_vec(),
+			ct: ciphertext[..ct_cutoff].to_vec()
+		};
+		let pad_len = (known_end.len() % 16) + 1;
+
+		let ke_cutoff = known_end.len() % 16;
+		for (i, k) in known_end[..ke_cutoff].iter().enumerate() {
+			work_input.change_byte_for_output(ciphertext.len() - known_end.len() + i, |b| b ^ k ^ pad_len as u8);
+		}
+
+		let work_offset = ciphertext.len() - known_end.len() - 1;
+		for b in 0..=255 {
+			let mut last_changed = work_input.clone();
+			last_changed.set_byte_for_output(work_offset, b);
+
+			if check_padding(&last_changed.iv, &last_changed.ct) {
+				if pad_len > 1 || {
+					let mut penultimate_changed = last_changed.clone();
+					penultimate_changed.change_byte_for_output(work_offset - 1, |b| b ^ 0xff);
+					check_padding(&penultimate_changed.iv, &penultimate_changed.ct)
+				} {
+					return Some(work_input.get_byte_for_output(work_offset) ^ b ^ pad_len as u8);
+				}
+			}
+		}
+		None
+	};
+
+	while let Some(b) = get_next_byte(&known_end) {
+		known_end.insert(0, b);
+	}
+
+	pkcs7_unpad_in_place(&mut known_end);
+	known_end
+}
+
 fn main() {
 	{ // Set 1 Challenge 1
 		let num = bytes_from_hex("49276d206b696c6c696e6720796f757220627261696e206c696b65206120706f69736f6e6f7573206d757368726f6f6d");
@@ -757,5 +833,37 @@ fn main() {
 		let dec = decryptor(&res);
 		println!("Set 2 Challenge 16: {}", bytes_to_safe_string(&dec));
 		assert!(bytes_to_string(&dec).contains(";admin=true;"));
+	}
+
+	{ // Set 3 Challenge 17
+		let key = get_random_bytes(16);
+		let encryptor = |plaintext: &[u8]| {
+			let iv = get_random_bytes(16);
+			let ct = cbc_encrypt(aes_128_encrypt_block, 16, &key, &iv, plaintext);
+			(iv, ct)
+		};
+		let oracle = |iv: &[u8], ciphertext: &[u8]| {
+			cbc_decrypt_check_pad(aes_128_decrypt_block, 16, &key, iv, ciphertext).is_some()
+		};
+		let strings = vec![
+			"MDAwMDAwTm93IHRoYXQgdGhlIHBhcnR5IGlzIGp1bXBpbmc=",
+			"MDAwMDAxV2l0aCB0aGUgYmFzcyBraWNrZWQgaW4gYW5kIHRoZSBWZWdhJ3MgYXJlIHB1bXBpbic=",
+			"MDAwMDAyUXVpY2sgdG8gdGhlIHBvaW50LCB0byB0aGUgcG9pbnQsIG5vIGZha2luZw==",
+			"MDAwMDAzQ29va2luZyBNQydzIGxpa2UgYSBwb3VuZCBvZiBiYWNvbg==",
+			"MDAwMDA0QnVybmluZyAnZW0sIGlmIHlvdSBhaW4ndCBxdWljayBhbmQgbmltYmxl",
+			"MDAwMDA1SSBnbyBjcmF6eSB3aGVuIEkgaGVhciBhIGN5bWJhbA==",
+			"MDAwMDA2QW5kIGEgaGlnaCBoYXQgd2l0aCBhIHNvdXBlZCB1cCB0ZW1wbw==",
+			"MDAwMDA3SSdtIG9uIGEgcm9sbCwgaXQncyB0aW1lIHRvIGdvIHNvbG8=",
+			"MDAwMDA4b2xsaW4nIGluIG15IGZpdmUgcG9pbnQgb2g=",
+			"MDAwMDA5aXRoIG15IHJhZy10b3AgZG93biBzbyBteSBoYWlyIGNhbiBibG93",
+		];
+		let chosen_string = bytes_from_str(&{
+			use rand::seq::SliceRandom;
+			strings.choose(&mut rand::thread_rng()).unwrap()
+		});
+		let (iv, ct) = encryptor(&chosen_string);
+		let res = solve_cbc_with_padding_oracle(oracle, &iv, &ct);
+		println!("Set 3 Challenge 17: {}", bytes_to_string(&bytes_from_base64(&bytes_to_string(&res))));
+		assert_eq!(chosen_string, res);
 	}
 }
