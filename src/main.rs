@@ -333,6 +333,23 @@ where D: FnMut(&[u8], &[u8]) -> Vec<u8> {
 	pkcs7_unpad(&res)
 }
 
+fn ctr_encrypt<E>(mut enc: E, block_size: usize, key: &[u8], nonce: &[u8], text: &[u8]) -> Vec<u8>
+where E: FnMut(&[u8], &[u8]) -> Vec<u8> {
+	assert!(nonce.len() == block_size - 8, "Nonce must be {} bytes", block_size - 8);
+
+	let mut ctr: u64 = 0;
+	let mut out = Vec::with_capacity(text.len());
+
+	for chunk in text.chunks(block_size) {
+		let ctr_block = [nonce, &ctr.to_le_bytes()].concat();
+		let eout = enc(key, &ctr_block);
+		out.extend(&xor_encode(&chunk, &eout));
+		ctr += 1;
+	}
+
+	out
+}
+
 fn encryption_oracle(input: &[u8]) -> (BlockMode, Vec<u8>) {
 	use rand::Rng;
 	let mut rng = rand::thread_rng();
@@ -865,5 +882,12 @@ fn main() {
 		let res = solve_cbc_with_padding_oracle(oracle, &iv, &ct);
 		println!("Set 3 Challenge 17: {}", bytes_to_string(&bytes_from_base64(&bytes_to_string(&res))));
 		assert_eq!(chosen_string, res);
+	}
+
+	{ // Set 3 Challenge 18
+		let string = bytes_from_base64("L77na/nrFsKvynd6HzOoG7GHTLXsTVu9qvY/2syLXzhPweyyMTJULu/6/kXX0KSvoOLSFQ==");
+		let dec = ctr_encrypt(aes_128_encrypt_block, 16, b"YELLOW SUBMARINE", &vec![0; 8], &string);
+		println!("Set 3 Challenge 18: {}", bytes_to_string(&dec));
+		assert_eq!("0e15ad04b165a34e8fe2dea7f9dda0a128b03c86d913a1dc8fb34272e436a2bc", sha256str(&dec));
 	}
 }
