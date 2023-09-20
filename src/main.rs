@@ -1069,4 +1069,48 @@ fn main() {
 		println!("Set 3 Challenge 21: {}", first10.iter().map(|n| format!("{:08x}", n)).collect::<Vec<_>>().join(" "));
 		assert_eq!([0xd091bb5c, 0x22ae9ef6, 0xe7e1faee, 0xd5c31f79, 0x2082352c, 0xf807b7df, 0xe9d30005, 0x3895afe1, 0xa1e24bba, 0x4ee4092b].to_vec(), first10);
 	}
+
+	{ // Set 3 Challenge 22
+		use rand::Rng;
+		use std::time::{Duration, SystemTime, UNIX_EPOCH};
+
+		#[allow(unused)]
+		let wait = || {
+			std::thread::sleep(Duration::from_secs(rand::thread_rng().gen_range(40..=1000)));
+			let seed_time = SystemTime::now().duration_since(UNIX_EPOCH).unwrap().as_secs() as u32;
+			let mut mt = mt19937::MT19937::with_seed(seed_time);
+			let generated_number = mt.next();
+			std::thread::sleep(Duration::from_secs(rand::thread_rng().gen_range(40..=1000)));
+			(mt, generated_number)
+		};
+
+		let wait_sim = || {
+			let seed_time = SystemTime::now().duration_since(UNIX_EPOCH).unwrap().as_secs() as u32;
+			let adj_seed_time = seed_time - rand::thread_rng().gen_range(40..=1000);
+			let mut mt = mt19937::MT19937::with_seed(adj_seed_time);
+			let generated_number = mt.next();
+			(mt, generated_number)
+		};
+
+//		let (mut target_mt, generated_number) = wait();
+		let (mut target_mt, generated_number) = wait_sim();
+
+		let now = SystemTime::now().duration_since(UNIX_EPOCH).unwrap().as_secs() as u32;
+		let found_seed = (|| {
+			for t in now - 1010 ..= now - 30 {
+				let mut mt = mt19937::MT19937::with_seed(t);
+				if mt.next() == generated_number {
+					return Some(t);
+				}
+			}
+			None
+		})();
+
+		let mut mt = mt19937::MT19937::with_seed(found_seed.unwrap());
+		mt.next();
+		let guessed_next_val = mt.next();
+		let actual_next_val = target_mt.next();
+		println!("Set 3 Challenge 22: Got {} (seed {}), next should be {}: {}", generated_number, found_seed.unwrap(), guessed_next_val, actual_next_val);
+		assert_eq!(actual_next_val, guessed_next_val);
+	}
 }
