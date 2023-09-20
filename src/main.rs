@@ -964,4 +964,34 @@ fn main() {
 
 		println!("Set 3 Challenge 19: {} / {} / {} / {}", probable_strings[0], probable_strings[1], probable_strings[2], probable_strings[3]);
 	}
+
+	{ // Set 3 Challenge 20
+		let key = get_random_bytes(16);
+		let ciphertexts = std::fs::read_to_string("20.txt").unwrap()
+			.lines()
+			.map(|l| bytes_from_base64(&l))
+			.map(|pt| ctr_encrypt(aes_128_encrypt_block, 16, &key, &vec![0; 8], &pt))
+			.collect::<Vec<_>>();
+
+		let transposed = (0..)
+			.map(|n| ciphertexts.iter().filter_map(|c| c.get(n).copied()).collect())
+			.take_while(|t: &Vec<u8>| t.len() > 0)
+			.collect::<Vec<_>>();
+
+		let probable_key_bytes = transposed.iter().map(|t| {
+			let mut scored = (0..=255).map(|k| {
+				let dec = xor_encode(&t, &[k]);
+				let score = score_text(&bytes_to_string(&dec));
+				(k, dec, score)
+			}).collect::<Vec<_>>();
+			scored.sort_by(|kts1, kts2| kts1.2.total_cmp(&kts2.2));
+			scored.pop().unwrap().0
+		}).collect::<Vec<u8>>();
+
+		let probable_strings: Vec<String> = ciphertexts.iter()
+			.map(|ct| bytes_to_safe_string(&xor_encode(&ct, &probable_key_bytes)))
+			.collect();
+
+		println!("Set 3 Challenge 20: {}", probable_strings[0]);
+	}
 }
