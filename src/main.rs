@@ -613,6 +613,73 @@ where O: FnMut(&[u8], &[u8]) -> bool {
 	known_end
 }
 
+mod mt19937 {
+	const W: usize = 32;
+	const N: usize = 624;
+	const M: usize = 397;
+	const R: usize = 31;
+	const A: u32 = 0x9908B0DF;
+	const U: usize = 11;
+	const S: usize = 7;
+	const B: u32 = 0x9D2C5680;
+	const T: usize = 15;
+	const C: u32 = 0xEFC60000;
+	const L: usize = 18;
+
+	const F: u32 = 1812433253;
+
+	pub struct MT19937 {
+		state: [u32; N],
+		index: usize,
+	}
+
+	impl MT19937 {
+		pub fn with_seed(seed: u32) -> Self {
+			let mut state = [0u32; N];
+
+			state[0] = seed;
+			for i in 1..N-1 {
+				state[i] = F * (state[i-1] ^ (state[i-1] >> (W - 2))) + (i as u32);
+			}
+
+			let mut mt = Self { state, index: 0 };
+			mt.twist();
+			mt
+		}
+
+		pub fn next(&mut self) -> u32 {
+			if self.index >= N {
+				self.twist();
+			}
+
+			let mut y = self.state[self.index];
+			y ^= y >> U;
+			y ^= (y << S) & B;
+			y ^= (y << T) & C;
+			y ^= y >> L;
+
+			self.index += 1;
+			y
+		}
+
+		fn twist(&mut self) {
+			const LOWER_MASK: u32 = (1 << R) - 1;
+			const UPPER_MASK: u32 = !LOWER_MASK;
+
+			for i in 0..N-1 {
+				let x = (self.state[i] & UPPER_MASK) | self.state[i+1] & LOWER_MASK;
+				let xa = if x % 2 == 0 {
+					x >> 1
+				} else {
+					(x >> 1) ^ A
+				};
+				self.state[i] = self.state[(i + M) % N] ^ xa;
+			}
+			self.index = 0;
+		}
+	}
+}
+
 fn main() {
 	{ // Set 1 Challenge 1
 		let num = bytes_from_hex("49276d206b696c6c696e6720796f757220627261696e206c696b65206120706f69736f6e6f7573206d757368726f6f6d");
@@ -993,5 +1060,13 @@ fn main() {
 			.collect();
 
 		println!("Set 3 Challenge 20: {}", probable_strings[0]);
+	}
+
+	{ // Set 3 Challenge 21
+		let mut mt = mt19937::MT19937::with_seed(5489);
+		let nums = std::iter::repeat_with(|| mt.next());
+		let first10: Vec<u32> = nums.take(10).collect();
+		println!("Set 3 Challenge 21: {}", first10.iter().map(|n| format!("{:08x}", n)).collect::<Vec<_>>().join(" "));
+		assert_eq!([0xd091bb5c, 0x22ae9ef6, 0xe7e1faee, 0xd5c31f79, 0x2082352c, 0xf807b7df, 0xe9d30005, 0x3895afe1, 0xa1e24bba, 0x4ee4092b].to_vec(), first10);
 	}
 }
