@@ -10,3 +10,6 @@ hex = "0.4.3"
 indexmap = "2.0.0"
 openssl = "0.10.57"
 rand = "0.8.5"
+
+[dev-dependencies]
+hexxdump = "1.0.1"
