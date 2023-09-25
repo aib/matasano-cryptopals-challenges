@@ -647,6 +647,10 @@ mod mt19937 {
 			mt
 		}
 
+		pub fn with_state(state: [u32; N], index: usize) -> Self {
+			Self { state, index }
+		}
+
 		pub fn next(&mut self) -> u32 {
 			if self.index >= N {
 				self.twist();
@@ -1191,5 +1195,22 @@ fn main() {
 			let undone = mt19937_untemper(output);
 			assert_eq!(input, undone, "{:08x} -temper-> {:08x} -untemper-> {:08x}", input, output, undone);
 		}
+	}
+
+	{ // Set 3 Challenge 23
+		let seed = { use rand::Rng; rand::thread_rng().gen::<u32>() };
+		let mut original = mt19937::MT19937::with_seed(seed);
+
+		let outputs = std::iter::repeat_with(|| original.next()).take(624);//.collect();
+		let untempered = outputs.map(mt19937_untemper).collect::<Vec<_>>();
+
+		let mut cloned = mt19937::MT19937::with_state(untempered.try_into().unwrap(), 624);
+
+		let ov = vec![original.next(), original.next(), original.next()];
+		let cv = vec![cloned.next(), cloned.next(), cloned.next()];
+		println!("Set 3 Challenge 23: Got {} {} {}, should be {} {} {}", ov[0], ov[1], ov[2], cv[0], cv[1], cv[2]);
+		assert_eq!(ov[0], cv[0]);
+		assert_eq!(ov[1], cv[1]);
+		assert_eq!(ov[2], cv[2]);
 	}
 }
