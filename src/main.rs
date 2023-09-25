@@ -652,12 +652,7 @@ mod mt19937 {
 				self.twist();
 			}
 
-			let mut y = self.state[self.index];
-			y ^= y >> U;
-			y ^= (y << S) & B;
-			y ^= (y << T) & C;
-			y ^= y >> L;
-
+			let y = temper(self.state[self.index]);
 			self.index += 1;
 			y
 		}
@@ -677,6 +672,14 @@ mod mt19937 {
 			}
 			self.index = 0;
 		}
+	}
+
+	pub fn temper(mut v: u32) -> u32 {
+		v ^= v >> U;
+		v ^= (v << S) & B;
+		v ^= (v << T) & C;
+		v ^= v >> L;
+		v
 	}
 }
 
