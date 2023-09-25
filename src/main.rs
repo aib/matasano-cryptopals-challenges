@@ -683,6 +683,73 @@ mod mt19937 {
 	}
 }
 
+fn mt19937_untemper(mut v: u32) -> u32 {
+	const U: usize = 11;
+	const S: usize = 7;
+	const B: u32 = 0x9D2C5680;
+	const T: usize = 15;
+	const C: u32 = 0xEFC60000;
+	const L: usize = 18;
+
+	fn umask(n: usize) -> u32 {
+		u32::MAX - if n >= 32 { 0 } else { u32::MAX >> n }
+	}
+	fn lmask(n: usize) -> u32 {
+		if n >= 32 { u32::MAX } else { (1 << n) - 1 }
+	}
+
+//	X12345678901234567 890123456789YZ
+//	000000000000000000 X1234567890123
+//	X12345678901234567 ~~~~~~~~~~~~~~
+	v ^= (v & umask(L)) >> L;
+
+//	567890123456789YZ 000000000000000 v << T
+//	11101111110001100 000000000000000 C
+//	567-901234---89-- --------------- &
+
+//	X1234567890123456 7890123456789YZ
+//	567-901234---89-- ---------------
+//	~~~3~~~~~~012~~56 7890123456789YZ
+
+	let amask = ((v & lmask(T+3)) << T) & C; // 567-9...
+	v = (v ^ amask) | (v & lmask(T));
+
+//	78901234567890123456789YZ 0000000 v << S
+//	1001110100101100010101101 0000000 B
+//	7--012-4--7-90---4-6-89-Z 0000000 &
+
+//	X123456789012345678901234 56789YZ
+//	7--012-4--7-90---4-6-89-Z 0000000
+//	~12~~~6~89~1~~456~8~0~~3~ 56789YZ
+
+	let amask14 = ((v & lmask(S)) << S) & B; // -6-89-Z 0000000
+	let v14 = (v ^ amask14) & lmask(S * 2); // 8901234 59789YZ
+
+//	7890 1234567 8901234 56789YZ 0000000 v << S
+//	1001 1101001 0110001 0101101 0000000 B
+//	7--0 12-4--7 -90---4 -6-89-Z 0000000 &
+	let amask21 = (v14 << S) & B;
+	let v21 = v ^ amask21;
+
+	let amask28 = (v21 << S) & B;
+	let v28 = v ^ amask28;
+
+	let amask35 = (v28 << S) & B;
+	let v35 = v ^ amask35;
+
+	v = v35;
+
+//	X1234567890 12345678901 23456789YZ v
+//	00000000000 X1234567890 1234567890 v >> U
+//	X1234567890 ~~~~~~~~~~~ ?????????? ^
+	let v11 = v & umask(U);
+	let v22 = v ^ (v11 >> U);
+	let v33 = v ^ (v22 >> U);
+	v = v33;
+
+	v
+}
+
 fn main() {
 	{ // Set 1 Challenge 1
 		let num = bytes_from_hex("49276d206b696c6c696e6720796f757220627261696e206c696b65206120706f69736f6e6f7573206d757368726f6f6d");
@@ -1115,5 +1182,14 @@ fn main() {
 		let actual_next_val = target_mt.next();
 		println!("Set 3 Challenge 22: Got {} (seed {}), next should be {}: {}", generated_number, found_seed.unwrap(), guessed_next_val, actual_next_val);
 		assert_eq!(actual_next_val, guessed_next_val);
+	}
+
+	{ // Test mt19937_untemper
+		for _ in 0..1000 {
+			let input = { use rand::Rng; rand::thread_rng().gen() };
+			let output = mt19937::temper(input);
+			let undone = mt19937_untemper(output);
+			assert_eq!(input, undone, "{:08x} -temper-> {:08x} -untemper-> {:08x}", input, output, undone);
+		}
 	}
 }
