@@ -754,6 +754,15 @@ fn mt19937_untemper(mut v: u32) -> u32 {
 	v
 }
 
+fn mt19937_stream_cipher(key: u16, text: &[u8]) -> Vec<u8> {
+	let mut rng = mt19937::MT19937::with_seed(key as u32);
+	let mut out = Vec::with_capacity(text.len());
+	for b in text {
+		out.push(b ^ (rng.next() as u8));
+	}
+	out
+}
+
 fn main() {
 	{ // Set 1 Challenge 1
 		let num = bytes_from_hex("49276d206b696c6c696e6720796f757220627261696e206c696b65206120706f69736f6e6f7573206d757368726f6f6d");
@@ -1212,5 +1221,24 @@ fn main() {
 		assert_eq!(ov[0], cv[0]);
 		assert_eq!(ov[1], cv[1]);
 		assert_eq!(ov[2], cv[2]);
+	}
+
+	{ // Set 3 Challenge 24
+		let key = { use rand::Rng; rand::thread_rng().gen::<u16>() };
+		let random_prefix = { use rand::Rng; get_random_bytes(rand::thread_rng().gen_range(0..16)) };
+		let plaintext = [random_prefix, b"AAAAAAAAAAAAAA".to_vec()].concat();
+		let ciphertext = mt19937_stream_cipher(key, &plaintext);
+		assert_eq!(plaintext, mt19937_stream_cipher(key, &ciphertext));
+
+		let mut found_key = None;
+		for k in 0..u16::MAX {
+			let pt = mt19937_stream_cipher(k, &ciphertext);
+			if &pt[pt.len() - 14..] == b"AAAAAAAAAAAAAA" {
+				found_key = Some(k);
+				break;
+			}
+		}
+		println!("Set 3 Challenge 24: {} (key 0x{:04x})", bytes_to_hex(&mt19937_stream_cipher(found_key.unwrap(), &ciphertext)), found_key.unwrap());
+		assert_eq!(key, found_key.unwrap());
 	}
 }
