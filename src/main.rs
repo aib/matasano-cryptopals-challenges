@@ -763,6 +763,13 @@ fn mt19937_stream_cipher(key: u16, text: &[u8]) -> Vec<u8> {
 	out
 }
 
+fn solve_ctr_with_edit<E>(mut edit: E, ciphertext: &[u8]) -> Vec<u8>
+where E: FnMut(&[u8], usize, &[u8]) -> Vec<u8> {
+	let zeros = vec![0; ciphertext.len()];
+	let zenc = edit(&ciphertext, 0, &zeros);
+	xor_encode(&zenc, &ciphertext)
+}
+
 fn main() {
 	{ // Set 1 Challenge 1
 		let num = bytes_from_hex("49276d206b696c6c696e6720796f757220627261696e206c696b65206120706f69736f6e6f7573206d757368726f6f6d");
@@ -1240,5 +1247,21 @@ fn main() {
 		}
 		println!("Set 3 Challenge 24: {} (key 0x{:04x})", bytes_to_hex(&mt19937_stream_cipher(found_key.unwrap(), &ciphertext)), found_key.unwrap());
 		assert_eq!(key, found_key.unwrap());
+	}
+
+	{ // Set 4 Challenge 25
+		let bs = bytes_from_base64(&std::fs::read_to_string("25.txt").unwrap());
+		let original = ecb_decrypt(aes_128_decrypt_block, 16, b"YELLOW SUBMARINE", &bs);
+		let (key, nonce) = (get_random_bytes(16), get_random_bytes(8));
+		let ciphertext = ctr_encrypt(aes_128_encrypt_block, 16, &key, &nonce, &original);
+
+		let edit = |ciphertext: &[u8], offset: usize, newtext: &[u8]| -> Vec<u8> {
+			let mut original = ctr_encrypt(aes_128_encrypt_block, 16, &key, &nonce, &ciphertext);
+			original[offset..offset+newtext.len()].copy_from_slice(&newtext);
+			ctr_encrypt(aes_128_encrypt_block, 16, &key, &nonce, &original)
+		};
+		let solved = solve_ctr_with_edit(edit, &ciphertext);
+		println!("Set 3 Challenge 25: {}", bytes_to_summary(&solved));
+		assert_eq!(original, solved);
 	}
 }
