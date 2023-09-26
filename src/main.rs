@@ -38,7 +38,7 @@ fn bytes_to_safe_string(bs: &[u8]) -> String {
 fn bytes_to_summary(bs: &[u8]) -> String {
 	let s = bytes_to_string(bs);
 	let lines: Vec<_> = s.lines().collect();
-	format!("{} ({} lines(s), {} char(s), SHA256: {})", lines[0].trim(), lines.len(), s.len(), sha256str(bs))
+	format!("{} ({} lines(s), {} char(s), SHA256: {})", lines.get(0).map_or("", |s| s.trim()), lines.len(), s.len(), sha256str(bs))
 }
 
 fn sha256str(bs: &[u8]) -> String {
