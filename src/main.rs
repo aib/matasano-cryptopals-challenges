@@ -309,7 +309,7 @@ where E: FnMut(&[u8], &[u8]) -> Vec<u8> {
 fn cbc_decrypt_no_unpad<D>(mut dec: D, block_size: usize, key: &[u8], iv: &[u8], ciphertext: &[u8]) -> Vec<u8>
 where D: FnMut(&[u8], &[u8]) -> Vec<u8> {
 	let mut res = Vec::with_capacity(ciphertext.len());
-	let mut iv = iv.clone();
+	let mut iv = iv;
 
 	for ctb in ciphertext.chunks(block_size) {
 		let bdec = dec(key, ctb);
@@ -1261,7 +1261,7 @@ fn main() {
 			ctr_encrypt(aes_128_encrypt_block, 16, &key, &nonce, &original)
 		};
 		let solved = solve_ctr_with_edit(edit, &ciphertext);
-		println!("Set 3 Challenge 25: {}", bytes_to_summary(&solved));
+		println!("Set 4 Challenge 25: {}", bytes_to_summary(&solved));
 		assert_eq!(original, solved);
 	}
 }
