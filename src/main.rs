@@ -770,6 +770,14 @@ where E: FnMut(&[u8], usize, &[u8]) -> Vec<u8> {
 	xor_encode(&zenc, &ciphertext)
 }
 
+fn solve_ctr_with_bitflip<F>(mut ctr: F) -> Vec<u8>
+where F: FnMut(&[u8]) -> Vec<u8> {
+	let almost = b"nodata:admin=true".to_vec();
+	let mut almost_enc = ctr(&almost);
+	almost_enc[38] ^= 1;
+	almost_enc
+}
+
 fn main() {
 	{ // Set 1 Challenge 1
 		let num = bytes_from_hex("49276d206b696c6c696e6720796f757220627261696e206c696b65206120706f69736f6e6f7573206d757368726f6f6d");
@@ -1263,5 +1271,23 @@ fn main() {
 		let solved = solve_ctr_with_edit(edit, &ciphertext);
 		println!("Set 4 Challenge 25: {}", bytes_to_summary(&solved));
 		assert_eq!(original, solved);
+	}
+
+	{ // Set 4 Challenge 26
+		let key = get_random_bytes(16);
+		let nonce = get_random_bytes(8);
+		let encryptor = |userdata: &[u8]| {
+			let escaped = bytes_to_string(userdata)
+				.replace("\\", "\\\\").replace(";", "\\;").replace("\"", "\\\"");
+			let s = format!("comment1=cooking%20MCs;userdata={};comment2=%20like%20a%20pound%20of%20bacon", escaped);
+			ctr_encrypt(aes_128_encrypt_block, 16, &key, &nonce, &bytes_from_str(&s))
+		};
+		let decryptor = |ciphertext: &[u8]| {
+			ctr_encrypt(aes_128_encrypt_block, 16, &key, &nonce, ciphertext)
+		};
+		let res = solve_ctr_with_bitflip(encryptor);
+		let dec = decryptor(&res);
+		println!("Set 4 Challenge 26: {}", bytes_to_safe_string(&dec));
+		assert!(bytes_to_string(&dec).contains(";admin=true;"));
 	}
 }
