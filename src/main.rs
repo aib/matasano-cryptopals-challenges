@@ -809,6 +809,87 @@ where
 	xor(get_nth_block(&pt_mod, 16, 0), get_nth_block(&pt_mod, 16, 2))
 }
 
+fn sha1(bs: &[u8]) -> Vec<u8> {
+	let mut msg = bs.to_vec();
+
+	let mut h0: u32 = 0x67452301;
+	let mut h1: u32 = 0xEFCDAB89;
+	let mut h2: u32 = 0x98BADCFE;
+	let mut h3: u32 = 0x10325476;
+	let mut h4: u32 = 0xC3D2E1F0;
+
+	let ml = bs.len() * 8;
+
+	msg.push(0x80);
+	while msg.len() % 64 != 56 {
+		msg.push(0x00);
+	}
+	msg.extend((ml as u64).to_be_bytes());
+
+	for chunk in msg.chunks_exact(64) {
+		let mut w: Vec<u32> = chunk
+			.chunks_exact(4)
+			.map(|b4| u32::from_be_bytes(b4.try_into().unwrap()))
+			.collect();
+
+		w.extend([0; 64]);
+
+		for i in 16..=79 {
+			w[i] = (w[i-3] ^ w[i-8] ^ w[i-14] ^ w[i-16]).rotate_left(1);
+		}
+
+		let mut a = h0;
+		let mut b = h1;
+		let mut c = h2;
+		let mut d = h3;
+		let mut e = h4;
+
+		for i in 0..=79 {
+			let mut f = 0;
+			let mut k = 0;
+			if /* 0 <= i && */ i <= 19 {
+				f = (b & c) | ((!b) & d);
+				k = 0x5A827999;
+			} else if 20 <= i && i <= 39 {
+				f = b ^ c ^ d;
+				k = 0x6ED9EBA1;
+			} else if 40 <= i && i <= 59 {
+				f = (b & c) | (b & d) | (c & d);
+				k = 0x8F1BBCDC;
+			} if 60 <= i && i <= 79 {
+				f = b ^ c ^ d;
+				k = 0xCA62C1D6;
+			}
+
+			let temp = (a.rotate_left(5)) + f + e + k + w[i];
+			e = d;
+			d = c;
+			c = b.rotate_left(30);
+			b = a;
+			a = temp;
+		}
+
+		h0 = h0 + a;
+		h1 = h1 + b;
+		h2 = h2 + c;
+		h3 = h3 + d;
+		h4 = h4 + e;
+	}
+
+	// Until we have slice_flatten
+	let mut v = Vec::with_capacity(32);
+	[h0, h1, h2, h3, h4].iter().for_each(|h| {
+		h.to_be_bytes().into_iter().for_each(|b| {
+			v.push(b);
+		})
+	});
+	v
+}
+
+fn sha1_mac(key: &[u8], msg: &[u8]) -> Vec<u8> {
+	sha1(&[key, msg].concat())
+}
+
 fn main() {
 	{ // Set 1 Challenge 1
 		let num = bytes_from_hex("49276d206b696c6c696e6720796f757220627261696e206c696b65206120706f69736f6e6f7573206d757368726f6f6d");
@@ -1343,5 +1424,27 @@ fn main() {
 		let found_iv = solve_cbc_with_iv_eq_key(encryptor, decryptor);
 		println!("Set 4 Challenge 27: {}", bytes_to_hex(&found_iv));
 		assert!(found_iv == iv);
+	}
+
+	{ // Test SHA-1
+		let msg = b"Hello, World!";
+		let lib_digest = openssl::hash::hash(openssl::hash::MessageDigest::sha1(), msg)
+			.expect("Unable to hash")
+			.to_vec();
+		let digest = sha1(msg);
+		assert_eq!(lib_digest, digest);
+	}
+
+	{ // Set 4 Challenge 28
+		let msg = bytes_from_str("Attack the city");
+		let key = bytes_from_str("hunter2");
+		let mac = sha1_mac(&key, &msg);
+
+		println!("Set 4 Challenge 28: Message: \"{}\", MAC: {}", bytes_to_string(&msg), bytes_to_hex(&mac));
+		assert_eq!(sha1_mac(&key, &msg), mac);
+		let lib_mac = openssl::hash::hash(openssl::hash::MessageDigest::sha1(), &[key, msg].concat())
+			.expect("Unable to hash")
+			.to_vec();
+		assert_eq!(lib_mac, mac);
 	}
 }
