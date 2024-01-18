@@ -59,6 +59,12 @@ fn get_nth_block(bytes: &[u8], block_size: usize, n: usize) -> &[u8] {
 	&bytes[usize::min(block_offset, bytes.len()) .. usize::min(block_offset + block_size, bytes.len())]
 }
 
+fn get_nth_block_mut(bytes: &mut [u8], block_size: usize, n: usize) -> &mut [u8] {
+	let blen = bytes.len();
+	let block_offset = n * block_size;
+	&mut bytes[usize::min(block_offset, blen) .. usize::min(block_offset + block_size, blen)]
+}
+
 fn xor(b1: &[u8], b2: &[u8]) -> Vec<u8> {
 	let size = std::cmp::max(b1.len(), b2.len());
 	let pad1 = b2.len().saturating_sub(b1.len());
@@ -778,6 +784,31 @@ where F: FnMut(&[u8]) -> Vec<u8> {
 	almost_enc
 }
 
+fn solve_cbc_with_iv_eq_key<E, D>(mut enc: E, mut dec: D) -> Vec<u8>
+where
+	E: FnMut(&[u8]) -> Vec<u8>,
+	D: FnMut(&[u8]) -> Result<(), Vec<u8>>,
+{
+	let msg = b"ThisIsBlockNum01ThisIsBlockNum02ThisIsBlockNum03";
+	let ct = enc(msg);
+
+	// PT1 = CBCd(CT1) ^ iv
+	// PT2 = CBCd(CT2) ^ CT1
+	// PT3 = CBCd(CT3) ^ CT2
+
+	// (CT3 = CT1) -> PT3 = CBCd(CT1) ^ CT2
+	// -> PT1 ^ PT3 = CBCd(CT1) ^ iv ^ CBCd(CT1) ^ CT2
+
+	let mut ct_mod = ct.clone();
+	get_nth_block_mut(&mut ct_mod, 16, 1).fill(0);
+	ct_mod.copy_within(0..16, 32);
+
+	let pt_mod = dec(&ct_mod)
+		.expect_err("Decryption result should be an error due to non-ASCII characters");
+
+	xor(get_nth_block(&pt_mod, 16, 0), get_nth_block(&pt_mod, 16, 2))
+}
+
 fn main() {
 	{ // Set 1 Challenge 1
 		let num = bytes_from_hex("49276d206b696c6c696e6720796f757220627261696e206c696b65206120706f69736f6e6f7573206d757368726f6f6d");
@@ -1289,5 +1320,28 @@ fn main() {
 		let dec = decryptor(&res);
 		println!("Set 4 Challenge 26: {}", bytes_to_safe_string(&dec));
 		assert!(bytes_to_string(&dec).contains(";admin=true;"));
+	}
+
+	{ // Set 4 Challenge 27
+		let key = get_random_bytes(16);
+		let iv = key.clone();
+		let encryptor = |userdata: &[u8]| {
+			let escaped = bytes_to_string(userdata)
+				.replace("\\", "\\\\").replace(";", "\\;").replace("\"", "\\\"");
+			let s = format!("comment1=cooking%20MCs;userdata={};comment2=%20like%20a%20pound%20of%20bacon", escaped);
+			cbc_encrypt(aes_128_encrypt_block, 16, &key, &iv, &bytes_from_str(&s))
+		};
+		let decryptor = |ciphertext: &[u8]| {
+			let dec = cbc_decrypt(aes_128_decrypt_block, 16, &key, &iv, ciphertext);
+			if dec.iter().find(|b| **b > 0x7f).is_some() {
+				Err(dec)
+			} else {
+				Ok(())
+			}
+		};
+
+		let found_iv = solve_cbc_with_iv_eq_key(encryptor, decryptor);
+		println!("Set 4 Challenge 27: {}", bytes_to_hex(&found_iv));
+		assert!(found_iv == iv);
 	}
 }
