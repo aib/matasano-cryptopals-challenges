@@ -810,15 +810,13 @@ where
 }
 
 fn sha1(bs: &[u8]) -> Vec<u8> {
+	sha1_with_state(0x67452301, 0xEFCDAB89, 0x98BADCFE, 0x10325476, 0xC3D2E1F0, 0, bs)
+}
+
+fn sha1_with_state(mut h0: u32, mut h1: u32, mut h2: u32, mut h3: u32, mut h4: u32, mut ml: usize, bs: &[u8]) -> Vec<u8> {
 	let mut msg = bs.to_vec();
 
-	let mut h0: u32 = 0x67452301;
-	let mut h1: u32 = 0xEFCDAB89;
-	let mut h2: u32 = 0x98BADCFE;
-	let mut h3: u32 = 0x10325476;
-	let mut h4: u32 = 0xC3D2E1F0;
-
-	let ml = bs.len() * 8;
+	ml += bs.len() * 8;
 
 	msg.push(0x80);
 	while msg.len() % 64 != 56 {
@@ -888,6 +886,42 @@ fn sha1(bs: &[u8]) -> Vec<u8> {
 
 fn sha1_mac(key: &[u8], msg: &[u8]) -> Vec<u8> {
 	sha1(&[key, msg].concat())
+}
+
+fn forge_sha1_mac<V>(verify: V, existing_msg: &[u8], existing_mac: &[u8]) -> Option<(Vec<u8>, Vec<u8>)>
+where V: Fn(&[u8], &[u8]) -> bool {
+	let forge_with_key_len = |key_len: usize| -> (Vec<u8>, Vec<u8>) {
+		let existing_len = key_len + existing_msg.len();
+		let glue_padding = get_sha1_padding(existing_len);
+		let extension = bytes_from_str(";admin=true;");
+
+		let h0 = u32::from_be_bytes(existing_mac[0..4].try_into().unwrap());
+		let h1 = u32::from_be_bytes(existing_mac[4..8].try_into().unwrap());
+		let h2 = u32::from_be_bytes(existing_mac[8..12].try_into().unwrap());
+		let h3 = u32::from_be_bytes(existing_mac[12..16].try_into().unwrap());
+		let h4 = u32::from_be_bytes(existing_mac[16..20].try_into().unwrap());
+
+		let mac = sha1_with_state(h0, h1, h2, h3, h4, (existing_len + glue_padding.len()) * 8, &extension);
+		([existing_msg, &glue_padding, &extension].concat(), mac)
+	};
+
+	fn get_sha1_padding(ml: usize) -> Vec<u8> {
+		let mut padding = vec![0x80];
+		while (ml + padding.len()) % 64 != 56 {
+			padding.push(0x00);
+		}
+		padding.extend(((ml * 8) as u64).to_be_bytes());
+		padding
+	}
+
+	for key_len in 0..=16 {
+		let (attempt, attempt_mac) = forge_with_key_len(key_len);
+		if verify(&attempt, &attempt_mac) {
+			return Some((attempt, attempt_mac));
+		}
+	}
+
+	None
 }
 
 fn main() {
@@ -1446,5 +1480,20 @@ fn main() {
 			.expect("Unable to hash")
 			.to_vec();
 		assert_eq!(lib_mac, mac);
+	}
+
+	{ // Set 4 Challenge 29
+		let key = get_random_bytes(16);
+		let verify = |msg: &[u8], mac: &[u8]| -> bool {
+			sha1_mac(&key, msg) == mac
+		};
+		let msg = bytes_from_str("comment1=cooking%20MCs;userdata=foo;comment2=%20like%20a%20pound%20of%20bacon");
+		let mac = sha1_mac(&key, &msg);
+		assert!(verify(&msg, &mac));
+
+		let (forged_message, forged_mac) = forge_sha1_mac(verify, &msg, &mac).unwrap();
+		println!("Set 4 Challenge 29: Message: \"{}\", MAC: {}", bytes_to_safe_string(&forged_message), bytes_to_hex(&forged_mac));
+		assert!(verify(&forged_message, &forged_mac));
+		assert!(bytes_to_string(&forged_message).contains(";admin=true;"));
 	}
 }
