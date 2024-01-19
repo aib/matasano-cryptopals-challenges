@@ -875,7 +875,7 @@ fn sha1_with_state(mut h0: u32, mut h1: u32, mut h2: u32, mut h3: u32, mut h4: u
 	}
 
 	// Until we have slice_flatten
-	let mut v = Vec::with_capacity(32);
+	let mut v = Vec::with_capacity(20);
 	[h0, h1, h2, h3, h4].iter().for_each(|h| {
 		h.to_be_bytes().into_iter().for_each(|b| {
 			v.push(b);
@@ -922,6 +922,117 @@ where V: Fn(&[u8], &[u8]) -> bool {
 	}
 
 	None
+}
+
+fn md4(bs: &[u8]) -> Vec<u8> {
+	let mut a = u32::from_le_bytes([0x01, 0x23, 0x45, 0x67]);
+	let mut b = u32::from_le_bytes([0x89, 0xab, 0xcd, 0xef]);
+	let mut c = u32::from_le_bytes([0xfe, 0xdc, 0xba, 0x98]);
+	let mut d = u32::from_le_bytes([0x76, 0x54, 0x32, 0x10]);
+
+	let mut msg = bs.to_vec();
+
+	msg.push(0x80);
+	while msg.len() % 64 != 56 {
+		msg.push(0x00);
+	}
+	let ml = bs.len() * 8;
+	let ml_h = ((ml as u64) & ((u32::MAX as u64) << u32::BITS)) as u32;
+	let ml_l = ((ml as u64) & (u32::MAX as u64)) as u32;
+	msg.extend(ml_l.to_le_bytes());
+	msg.extend(ml_h.to_le_bytes());
+
+	fn f(x: u32, y: u32, z: u32) -> u32 { (x & y) | (!x & z) }
+	fn g(x: u32, y: u32, z: u32) -> u32 { (x & y) | (x & z) | (y & z) }
+	fn h(x: u32, y: u32, z: u32) -> u32 { x ^ y ^ z }
+
+	for chunk in msg.chunks_exact(64) {
+		let x: Vec<u32> = chunk
+			.chunks_exact(4)
+			.map(|b4| u32::from_le_bytes(b4.try_into().unwrap()))
+			.collect();
+
+		let aa = a;
+		let bb = b;
+		let cc = c;
+		let dd = d;
+
+		let r1_op = |a: &mut u32, b: &mut u32, c: &mut u32, d: &mut u32, k: usize, s: u32| {
+			*a = (*a + f(*b, *c, *d) + x[k]).rotate_left(s)
+		};
+
+		r1_op(&mut a, &mut b, &mut c, &mut d,  0,  3);
+		r1_op(&mut d, &mut a, &mut b, &mut c,  1,  7);
+		r1_op(&mut c, &mut d, &mut a, &mut b,  2, 11);
+		r1_op(&mut b, &mut c, &mut d, &mut a,  3, 19);
+		r1_op(&mut a, &mut b, &mut c, &mut d,  4,  3);
+		r1_op(&mut d, &mut a, &mut b, &mut c,  5,  7);
+		r1_op(&mut c, &mut d, &mut a, &mut b,  6, 11);
+		r1_op(&mut b, &mut c, &mut d, &mut a,  7, 19);
+		r1_op(&mut a, &mut b, &mut c, &mut d,  8,  3);
+		r1_op(&mut d, &mut a, &mut b, &mut c,  9,  7);
+		r1_op(&mut c, &mut d, &mut a, &mut b, 10, 11);
+		r1_op(&mut b, &mut c, &mut d, &mut a, 11, 19);
+		r1_op(&mut a, &mut b, &mut c, &mut d, 12,  3);
+		r1_op(&mut d, &mut a, &mut b, &mut c, 13,  7);
+		r1_op(&mut c, &mut d, &mut a, &mut b, 14, 11);
+		r1_op(&mut b, &mut c, &mut d, &mut a, 15, 19);
+
+		let r2_op = |a: &mut u32, b: &mut u32, c: &mut u32, d: &mut u32, k: usize, s: u32| {
+			*a = (*a + g(*b, *c, *d) + x[k] + 0x5A827999).rotate_left(s)
+		};
+
+		r2_op(&mut a, &mut b, &mut c, &mut d,  0,  3);
+		r2_op(&mut d, &mut a, &mut b, &mut c,  4,  5);
+		r2_op(&mut c, &mut d, &mut a, &mut b,  8,  9);
+		r2_op(&mut b, &mut c, &mut d, &mut a, 12, 13);
+		r2_op(&mut a, &mut b, &mut c, &mut d,  1,  3);
+		r2_op(&mut d, &mut a, &mut b, &mut c,  5,  5);
+		r2_op(&mut c, &mut d, &mut a, &mut b,  9,  9);
+		r2_op(&mut b, &mut c, &mut d, &mut a, 13, 13);
+		r2_op(&mut a, &mut b, &mut c, &mut d,  2,  3);
+		r2_op(&mut d, &mut a, &mut b, &mut c,  6,  5);
+		r2_op(&mut c, &mut d, &mut a, &mut b, 10,  9);
+		r2_op(&mut b, &mut c, &mut d, &mut a, 14, 13);
+		r2_op(&mut a, &mut b, &mut c, &mut d,  3,  3);
+		r2_op(&mut d, &mut a, &mut b, &mut c,  7,  5);
+		r2_op(&mut c, &mut d, &mut a, &mut b, 11,  9);
+		r2_op(&mut b, &mut c, &mut d, &mut a, 15, 13);
+
+		let r3_op = |a: &mut u32, b: &mut u32, c: &mut u32, d: &mut u32, k: usize, s: u32| {
+			*a = (*a + h(*b, *c, *d) + x[k] + 0x6ED9EBA1).rotate_left(s)
+		};
+
+		r3_op(&mut a, &mut b, &mut c, &mut d,  0,  3);
+		r3_op(&mut d, &mut a, &mut b, &mut c,  8,  9);
+		r3_op(&mut c, &mut d, &mut a, &mut b,  4, 11);
+		r3_op(&mut b, &mut c, &mut d, &mut a, 12, 15);
+		r3_op(&mut a, &mut b, &mut c, &mut d,  2,  3);
+		r3_op(&mut d, &mut a, &mut b, &mut c, 10,  9);
+		r3_op(&mut c, &mut d, &mut a, &mut b,  6, 11);
+		r3_op(&mut b, &mut c, &mut d, &mut a, 14, 15);
+		r3_op(&mut a, &mut b, &mut c, &mut d,  1,  3);
+		r3_op(&mut d, &mut a, &mut b, &mut c,  9,  9);
+		r3_op(&mut c, &mut d, &mut a, &mut b,  5, 11);
+		r3_op(&mut b, &mut c, &mut d, &mut a, 13, 15);
+		r3_op(&mut a, &mut b, &mut c, &mut d,  3,  3);
+		r3_op(&mut d, &mut a, &mut b, &mut c, 11,  9);
+		r3_op(&mut c, &mut d, &mut a, &mut b,  7, 11);
+		r3_op(&mut b, &mut c, &mut d, &mut a, 15, 15);
+
+		a += aa;
+		b += bb;
+		c += cc;
+		d += dd;
+	}
+
+	let mut v = Vec::with_capacity(16);
+	[a, b, c, d].iter().for_each(|w| {
+		w.to_le_bytes().into_iter().for_each(|b| {
+			v.push(b);
+		})
+	});
+	v
 }
 
 fn main() {
@@ -1495,5 +1606,15 @@ fn main() {
 		println!("Set 4 Challenge 29: Message: \"{}\", MAC: {}", bytes_to_safe_string(&forged_message), bytes_to_hex(&forged_mac));
 		assert!(verify(&forged_message, &forged_mac));
 		assert!(bytes_to_string(&forged_message).contains(";admin=true;"));
+	}
+
+	{ // Test MD4
+		assert_eq!(bytes_to_hex(&md4(b"")), "31d6cfe0d16ae931b73c59d7e0c089c0");
+		assert_eq!(bytes_to_hex(&md4(b"a")), "bde52cb31de33e46245e05fbdbd6fb24");
+		assert_eq!(bytes_to_hex(&md4(b"abc")), "a448017aaf21d8525fc10ae87aa6729d");
+		assert_eq!(bytes_to_hex(&md4(b"message digest")), "d9130a8164549fe818874806e1c7014b");
+		assert_eq!(bytes_to_hex(&md4(b"abcdefghijklmnopqrstuvwxyz")), "d79e1c308aa5bbcdeea8ed63df412da9");
+		assert_eq!(bytes_to_hex(&md4(b"ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789")), "043f8582f241db351ce627e153e7f0e4");
+		assert_eq!(bytes_to_hex(&md4(b"12345678901234567890123456789012345678901234567890123456789012345678901234567890")), "e33b4ddc9c38f2199c3e7b164fcc0536");
 	}
 }
