@@ -925,18 +925,24 @@ where V: Fn(&[u8], &[u8]) -> bool {
 }
 
 fn md4(bs: &[u8]) -> Vec<u8> {
-	let mut a = u32::from_le_bytes([0x01, 0x23, 0x45, 0x67]);
-	let mut b = u32::from_le_bytes([0x89, 0xab, 0xcd, 0xef]);
-	let mut c = u32::from_le_bytes([0xfe, 0xdc, 0xba, 0x98]);
-	let mut d = u32::from_le_bytes([0x76, 0x54, 0x32, 0x10]);
+	md4_with_state(
+		u32::from_le_bytes([0x01, 0x23, 0x45, 0x67]),
+		u32::from_le_bytes([0x89, 0xab, 0xcd, 0xef]),
+		u32::from_le_bytes([0xfe, 0xdc, 0xba, 0x98]),
+		u32::from_le_bytes([0x76, 0x54, 0x32, 0x10]),
+		0,
+		bs
+	)
+}
 
+fn md4_with_state(mut a: u32, mut b: u32, mut c: u32, mut d: u32, mut ml: usize, bs: &[u8]) -> Vec<u8> {
 	let mut msg = bs.to_vec();
 
 	msg.push(0x80);
 	while msg.len() % 64 != 56 {
 		msg.push(0x00);
 	}
-	let ml = bs.len() * 8;
+	ml += bs.len() * 8;
 	let ml_h = ((ml as u64) & ((u32::MAX as u64) << u32::BITS)) as u32;
 	let ml_l = ((ml as u64) & (u32::MAX as u64)) as u32;
 	msg.extend(ml_l.to_le_bytes());
@@ -1033,6 +1039,48 @@ fn md4(bs: &[u8]) -> Vec<u8> {
 		})
 	});
 	v
+}
+
+fn md4_mac(key: &[u8], msg: &[u8]) -> Vec<u8> {
+	md4(&[key, msg].concat())
+}
+
+fn forge_md4_mac<V>(verify: V, existing_msg: &[u8], existing_mac: &[u8]) -> Option<(Vec<u8>, Vec<u8>)>
+where V: Fn(&[u8], &[u8]) -> bool {
+	let forge_with_key_len = |key_len: usize| -> (Vec<u8>, Vec<u8>) {
+		let existing_len = key_len + existing_msg.len();
+		let glue_padding = get_md4_padding(existing_len);
+		let extension = bytes_from_str(";admin=true;");
+
+		let a = u32::from_le_bytes(existing_mac[0..4].try_into().unwrap());
+		let b = u32::from_le_bytes(existing_mac[4..8].try_into().unwrap());
+		let c = u32::from_le_bytes(existing_mac[8..12].try_into().unwrap());
+		let d = u32::from_le_bytes(existing_mac[12..16].try_into().unwrap());
+
+		let mac = md4_with_state(a, b, c, d, (existing_len + glue_padding.len()) * 8, &extension);
+		([existing_msg, &glue_padding, &extension].concat(), mac)
+	};
+
+	fn get_md4_padding(ml: usize) -> Vec<u8> {
+		let mut padding = vec![0x80];
+		while (ml + padding.len()) % 64 != 56 {
+			padding.push(0x00);
+		}
+		let ml_h = (((ml * 8) as u64) & ((u32::MAX as u64) << u32::BITS)) as u32;
+		let ml_l = (((ml * 8) as u64) & (u32::MAX as u64)) as u32;
+		padding.extend(ml_l.to_le_bytes());
+		padding.extend(ml_h.to_le_bytes());
+		padding
+	}
+
+	for key_len in 0..=16 {
+		let (attempt, attempt_mac) = forge_with_key_len(key_len);
+		if verify(&attempt, &attempt_mac) {
+			return Some((attempt, attempt_mac));
+		}
+	}
+
+	None
 }
 
 fn main() {
@@ -1616,5 +1664,20 @@ fn main() {
 		assert_eq!(bytes_to_hex(&md4(b"abcdefghijklmnopqrstuvwxyz")), "d79e1c308aa5bbcdeea8ed63df412da9");
 		assert_eq!(bytes_to_hex(&md4(b"ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789")), "043f8582f241db351ce627e153e7f0e4");
 		assert_eq!(bytes_to_hex(&md4(b"12345678901234567890123456789012345678901234567890123456789012345678901234567890")), "e33b4ddc9c38f2199c3e7b164fcc0536");
+	}
+
+	{ // Set 4 Challenge 30
+		let key = get_random_bytes(16);
+		let verify = |msg: &[u8], mac: &[u8]| -> bool {
+			md4_mac(&key, msg) == mac
+		};
+		let msg = bytes_from_str("comment1=cooking%20MCs;userdata=foo;comment2=%20like%20a%20pound%20of%20bacon");
+		let mac = md4_mac(&key, &msg);
+		assert!(verify(&msg, &mac));
+
+		let (forged_message, forged_mac) = forge_md4_mac(verify, &msg, &mac).unwrap();
+		println!("Set 4 Challenge 30: Message: \"{}\", MAC: {}", bytes_to_safe_string(&forged_message), bytes_to_hex(&forged_mac));
+		assert!(verify(&forged_message, &forged_mac));
+		assert!(bytes_to_string(&forged_message).contains(";admin=true;"));
 	}
 }
