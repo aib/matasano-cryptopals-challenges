@@ -1083,6 +1083,25 @@ where V: FnMut(&[u8], &[u8]) -> bool {
 	None
 }
 
+fn hmac<H>(mut h: H, b: usize, k: &[u8], m: &[u8]) -> Vec<u8>
+where H: FnMut(&[u8]) -> Vec<u8> {
+	let ipad = vec![0x36; b];
+	let opad = vec![0x5c; b];
+
+	let k = if k.len() < b {
+		let mut k_padded = k.to_vec();
+		k_padded.resize(b, 0);
+		k_padded
+	} else if k.len() > b {
+		h(k)
+	} else {
+		k.to_vec()
+	};
+
+	let step4 = h(&[&xor(&k, &ipad), m].concat());
+	h(&[xor(&k, &opad), step4].concat())
+}
+
 fn main() {
 	{ // Set 1 Challenge 1
 		let num = bytes_from_hex("49276d206b696c6c696e6720796f757220627261696e206c696b65206120706f69736f6e6f7573206d757368726f6f6d");
@@ -1679,5 +1698,40 @@ fn main() {
 		println!("Set 4 Challenge 30: Message: \"{}\", MAC: {}", bytes_to_safe_string(&forged_message), bytes_to_hex(&forged_mac));
 		assert!(verify(&forged_message, &forged_mac));
 		assert!(bytes_to_string(&forged_message).contains(";admin=true;"));
+	}
+
+	{ // Test HMAC
+		let hmac_md5 = |k: &[u8], m: &[u8]| {
+			let h = |bs: &[u8]| {
+				openssl::hash::hash(openssl::hash::MessageDigest::md5(), bs)
+					.expect("Unable to hash")
+					.to_vec()
+			};
+			hmac(h, 64, k, m)
+		};
+
+		assert_eq!(
+			bytes_to_hex(&hmac_md5(
+				&bytes_from_hex("0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b"),
+				b"Hi There",
+			)),
+			"9294727a3638bb1c13f48ef8158bfc9d"
+		);
+
+		assert_eq!(
+			bytes_to_hex(&hmac_md5(
+				b"Jefe",
+				b"what do ya want for nothing?",
+			)),
+			"750c783e6ab0b503eaa86e310a5db738",
+		);
+
+		assert_eq!(
+			bytes_to_hex(&hmac_md5(
+				&bytes_from_hex("AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA"),
+				&vec![0xdd; 50],
+			)),
+			"56be34521d144c88dbb8c733f0e8b3f6",
+		);
 	}
 }
