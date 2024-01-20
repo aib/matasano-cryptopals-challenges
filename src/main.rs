@@ -888,8 +888,8 @@ fn sha1_mac(key: &[u8], msg: &[u8]) -> Vec<u8> {
 	sha1(&[key, msg].concat())
 }
 
-fn forge_sha1_mac<V>(verify: V, existing_msg: &[u8], existing_mac: &[u8]) -> Option<(Vec<u8>, Vec<u8>)>
-where V: Fn(&[u8], &[u8]) -> bool {
+fn forge_sha1_mac<V>(mut verify: V, existing_msg: &[u8], existing_mac: &[u8]) -> Option<(Vec<u8>, Vec<u8>)>
+where V: FnMut(&[u8], &[u8]) -> bool {
 	let forge_with_key_len = |key_len: usize| -> (Vec<u8>, Vec<u8>) {
 		let existing_len = key_len + existing_msg.len();
 		let glue_padding = get_sha1_padding(existing_len);
@@ -1045,8 +1045,8 @@ fn md4_mac(key: &[u8], msg: &[u8]) -> Vec<u8> {
 	md4(&[key, msg].concat())
 }
 
-fn forge_md4_mac<V>(verify: V, existing_msg: &[u8], existing_mac: &[u8]) -> Option<(Vec<u8>, Vec<u8>)>
-where V: Fn(&[u8], &[u8]) -> bool {
+fn forge_md4_mac<V>(mut verify: V, existing_msg: &[u8], existing_mac: &[u8]) -> Option<(Vec<u8>, Vec<u8>)>
+where V: FnMut(&[u8], &[u8]) -> bool {
 	let forge_with_key_len = |key_len: usize| -> (Vec<u8>, Vec<u8>) {
 		let existing_len = key_len + existing_msg.len();
 		let glue_padding = get_md4_padding(existing_len);
