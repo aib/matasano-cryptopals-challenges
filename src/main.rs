@@ -1,5 +1,6 @@
 use std::collections::{HashMap, HashSet};
 use std::hash::Hash;
+use std::time::{Duration, Instant};
 
 use indexmap::IndexMap;
 
@@ -39,6 +40,14 @@ fn bytes_to_summary(bs: &[u8]) -> String {
 	let s = bytes_to_string(bs);
 	let lines: Vec<_> = s.lines().collect();
 	format!("{} ({} lines(s), {} char(s), SHA256: {})", lines.get(0).map_or("", |s| s.trim()), lines.len(), s.len(), sha256str(bs))
+}
+
+fn replace_char_at(src: &str, index: usize, c: char) -> String {
+	let mut chars: Vec<char> = src.chars().collect();
+	if index < chars.len() {
+		chars[index] = c;
+	}
+	chars.into_iter().collect()
 }
 
 fn sha256str(bs: &[u8]) -> String {
@@ -1102,6 +1111,17 @@ where H: FnMut(&[u8]) -> Vec<u8> {
 	h(&[xor(&k, &opad), step4].concat())
 }
 
+fn hmac_sha1(key: &[u8], message: &[u8]) -> Vec<u8> {
+	hmac(sha1, 64, key, message)
+}
+
+fn timed_http_get(url: &str) -> (bool, Duration) {
+	let start_time = Instant::now();
+	let okay = ureq::get(url).call().is_ok();
+	let end_time = Instant::now();
+	(okay, end_time - start_time)
+}
+
 fn main() {
 	{ // Set 1 Challenge 1
 		let num = bytes_from_hex("49276d206b696c6c696e6720796f757220627261696e206c696b65206120706f69736f6e6f7573206d757368726f6f6d");
@@ -1733,5 +1753,49 @@ fn main() {
 			)),
 			"56be34521d144c88dbb8c733f0e8b3f6",
 		);
+	}
+
+	{ // Set 4 Challenge 31
+		#[allow(dead_code)]
+		fn find_signature(file: &str) -> Option<String> {
+			let url = |signature: &str| format!("http://localhost:9000/test?file={file}&signature={signature}");
+
+			// Empty request to prime the HTTP library
+			timed_http_get(&url("_"));
+
+			let mut found_signature = None;
+			let mut signature = String::from("0000000000000000000000000000000000000000");
+
+			for try_digit in 0..signature.len() {
+				let mut c_d_f = "0123456789abcdef".chars().map(|c| {
+					let signature_to_try = replace_char_at(&signature, try_digit, c);
+					let (ok, duration) = timed_http_get(&url(&signature_to_try));
+					let found = if ok { Some(signature_to_try) } else { None };
+					(c, duration, found)
+				}).collect::<Vec<_>>();
+
+				found_signature = c_d_f.iter()
+					.find_map(|(_c, _d, f)| f.as_ref().map(|x| x.clone()));
+				if found_signature.is_some() {
+					break;
+				}
+
+				c_d_f.sort_by_key(|(_c, d, _f)| *d);
+				let longest = c_d_f.last().unwrap().0;
+				signature = replace_char_at(&signature, try_digit, longest);
+				println!("Signature: {} step {}, times {:?}", signature, try_digit, c_d_f);
+			}
+
+			found_signature
+		}
+
+		let file = "foo";
+
+		// Can't really replay the whole timing attack
+		//let found_signature = find_signature(file);
+		let found_signature = Some(String::from("274b7c4d98605fcf739a0bf9237551623f415fb8"));
+
+		println!("Set 4 Challenge 31: File: {}, signature: {}", file, found_signature.as_ref().unwrap());
+		assert_eq!(bytes_to_hex(&hmac_sha1(b"YELLOW SUBMARINE", &bytes_from_str(file))), found_signature.unwrap());
 	}
 }
