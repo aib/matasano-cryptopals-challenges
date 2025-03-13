@@ -1696,13 +1696,13 @@ fn main() {
 	}
 
 	{ // Test MD4
-		assert_eq!(bytes_to_hex(&md4(b"")), "31d6cfe0d16ae931b73c59d7e0c089c0");
-		assert_eq!(bytes_to_hex(&md4(b"a")), "bde52cb31de33e46245e05fbdbd6fb24");
-		assert_eq!(bytes_to_hex(&md4(b"abc")), "a448017aaf21d8525fc10ae87aa6729d");
-		assert_eq!(bytes_to_hex(&md4(b"message digest")), "d9130a8164549fe818874806e1c7014b");
-		assert_eq!(bytes_to_hex(&md4(b"abcdefghijklmnopqrstuvwxyz")), "d79e1c308aa5bbcdeea8ed63df412da9");
-		assert_eq!(bytes_to_hex(&md4(b"ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789")), "043f8582f241db351ce627e153e7f0e4");
-		assert_eq!(bytes_to_hex(&md4(b"12345678901234567890123456789012345678901234567890123456789012345678901234567890")), "e33b4ddc9c38f2199c3e7b164fcc0536");
+		assert_eq!("31d6cfe0d16ae931b73c59d7e0c089c0", bytes_to_hex(&md4(b"")));
+		assert_eq!("bde52cb31de33e46245e05fbdbd6fb24", bytes_to_hex(&md4(b"a")));
+		assert_eq!("a448017aaf21d8525fc10ae87aa6729d", bytes_to_hex(&md4(b"abc")));
+		assert_eq!("d9130a8164549fe818874806e1c7014b", bytes_to_hex(&md4(b"message digest")));
+		assert_eq!("d79e1c308aa5bbcdeea8ed63df412da9", bytes_to_hex(&md4(b"abcdefghijklmnopqrstuvwxyz")));
+		assert_eq!("043f8582f241db351ce627e153e7f0e4", bytes_to_hex(&md4(b"ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789")));
+		assert_eq!("e33b4ddc9c38f2199c3e7b164fcc0536", bytes_to_hex(&md4(b"12345678901234567890123456789012345678901234567890123456789012345678901234567890")));
 	}
 
 	{ // Set 4 Challenge 30
@@ -1731,27 +1731,27 @@ fn main() {
 		};
 
 		assert_eq!(
+			"9294727a3638bb1c13f48ef8158bfc9d",
 			bytes_to_hex(&hmac_md5(
 				&bytes_from_hex("0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b"),
 				b"Hi There",
-			)),
-			"9294727a3638bb1c13f48ef8158bfc9d"
+			))
 		);
 
 		assert_eq!(
+			"750c783e6ab0b503eaa86e310a5db738",
 			bytes_to_hex(&hmac_md5(
 				b"Jefe",
 				b"what do ya want for nothing?",
-			)),
-			"750c783e6ab0b503eaa86e310a5db738",
+			))
 		);
 
 		assert_eq!(
+			"56be34521d144c88dbb8c733f0e8b3f6",
 			bytes_to_hex(&hmac_md5(
 				&bytes_from_hex("AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA"),
 				&vec![0xdd; 50],
-			)),
-			"56be34521d144c88dbb8c733f0e8b3f6",
+			))
 		);
 	}
 
