@@ -14,7 +14,8 @@ def digest(msg):
 def insecure_compare(s1, s2):
 	for (c1, c2) in zip(s1, s2, strict=True):
 #		time.sleep(0.050)
-		time.sleep(0.005)
+#		time.sleep(0.005)
+		time.sleep(0.002)
 		if c1 != c2:
 			return False
 	return True

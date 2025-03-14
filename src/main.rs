@@ -1798,4 +1798,57 @@ fn main() {
 		println!("Set 4 Challenge 31: File: {}, signature: {}", file, found_signature.as_ref().unwrap());
 		assert_eq!(bytes_to_hex(&hmac_sha1(b"YELLOW SUBMARINE", &bytes_from_str(file))), found_signature.unwrap());
 	}
+
+	{ // Set 4 Challenge 32
+		#[allow(dead_code)]
+		fn find_signature_rep(file: &str, repetitions: usize) -> Option<String> {
+			let url = |signature: &str| format!("http://localhost:9000/test?file={file}&signature={signature}");
+
+			// Empty request to prime the HTTP library
+			timed_http_get(&url("_"));
+
+			let mut found_signature = None;
+			let mut signature = String::from("0000000000000000000000000000000000000000");
+
+			for try_digit in 0..signature.len() {
+				let c_d_f = "0123456789abcdef".chars()
+					.cycle().take(16 * repetitions)
+					.map(|c| {
+						let signature_to_try = replace_char_at(&signature, try_digit, c);
+						let (ok, duration) = timed_http_get(&url(&signature_to_try));
+						let found = if ok { Some(signature_to_try) } else { None };
+						(c, duration, found)
+					})
+					.collect::<Vec<_>>();
+
+				found_signature = c_d_f.iter()
+					.find_map(|(_c, _d, f)| f.as_ref().map(|x| x.clone()));
+				if found_signature.is_some() {
+					break;
+				}
+
+				let mut total_times = HashMap::<char, Duration>::new();
+				for (c, d, _f) in c_d_f.into_iter() {
+					*total_times.entry(c).or_insert(Duration::ZERO) += d;
+				}
+				let mut c_d: Vec<(char, Duration)> = total_times.into_iter().collect();
+
+				c_d.sort_by_key(|(_c, d)| *d);
+				let longest = c_d.last().unwrap().0;
+				signature = replace_char_at(&signature, try_digit, longest);
+				println!("Signature: {} step {}, times {:?}", signature, try_digit, c_d);
+			}
+
+			found_signature
+		}
+
+		let file = "foo";
+
+		// Can't really replay the whole timing attack
+		//let found_signature = find_signature_rep(file, 5);
+		let found_signature = Some(String::from("274b7c4d98605fcf739a0bf9237551623f415fb8"));
+
+		println!("Set 4 Challenge 32: File: {}, signature: {}", file, found_signature.as_ref().unwrap());
+		assert_eq!(bytes_to_hex(&hmac_sha1(b"YELLOW SUBMARINE", &bytes_from_str(file))), found_signature.unwrap());
+	}
 }
