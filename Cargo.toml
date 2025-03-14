@@ -9,6 +9,7 @@ base64 = "0.21.3"
 hex = "0.4.3"
 hexxdump = "1.0.1"
 indexmap = "2.0.0"
+num-bigint = { version = "0.4.6", features = ["rand"] }
 openssl = "0.10.57"
 rand = "0.8.5"
 ureq = "3.0.8"

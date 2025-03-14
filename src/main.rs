@@ -1122,6 +1122,30 @@ fn timed_http_get(url: &str) -> (bool, Duration) {
 	(okay, end_time - start_time)
 }
 
+fn diffie_hellman_toy(p: u32, g: u32) -> (u32, u32, u32, u32, u32, u32) {
+	use rand::Rng;
+	let mut rng = rand::thread_rng();
+
+	fn mod_exp(n: u32, e: u32, m: u32) -> u32 {
+		let mut x = 1;
+		for _ in 0..e {
+			x = (x * n) % m;
+		}
+		x
+	}
+
+	let a = rng.gen_range(0..p);
+	let a_pub = mod_exp(g, a, p);
+
+	let b = rng.gen_range(0..p);
+	let b_pub = mod_exp(g, b, p);
+
+	let s1 = mod_exp(b_pub, a, p);
+	let s2 = mod_exp(a_pub, b, p);
+
+	(a, a_pub, b, b_pub, s1, s2)
+}
+
 fn main() {
 	{ // Set 1 Challenge 1
 		let num = bytes_from_hex("49276d206b696c6c696e6720796f757220627261696e206c696b65206120706f69736f6e6f7573206d757368726f6f6d");
@@ -1850,5 +1874,10 @@ fn main() {
 
 		println!("Set 4 Challenge 32: File: {}, signature: {}", file, found_signature.as_ref().unwrap());
 		assert_eq!(bytes_to_hex(&hmac_sha1(b"YELLOW SUBMARINE", &bytes_from_str(file))), found_signature.unwrap());
+	}
+
+	{ // Set 5 Challenge 33
+		let (_a, _a_pub, _b, _b_pub, s1, s2) = diffie_hellman_toy(37, 5);
+		assert_eq!(s1, s2);
 	}
 }
