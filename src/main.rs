@@ -1175,6 +1175,18 @@ fn nist_p_g() -> (BigUint, BigUint) {
 	(p, g)
 }
 
+fn aes_cbc_encrypt(key: &[u8], plaintext: &[u8]) -> Vec<u8> {
+	let mut iv = get_random_bytes(16);
+	let mut ciphertext = cbc_encrypt(aes_128_encrypt_block, 16, &key, &iv, &plaintext);
+	ciphertext.append(&mut iv);
+	ciphertext
+}
+
+fn aes_cbc_decrypt(key: &[u8], ciphertext_and_iv: &[u8]) -> Option<Vec<u8>> {
+	let (ct, iv) = ciphertext_and_iv.split_at_checked(ciphertext_and_iv.len() - 16)?;
+	Some(cbc_decrypt(aes_128_decrypt_block, 16, &key, &iv, &ct))
+}
+
 fn main() {
 	{ // Set 1 Challenge 1
 		let num = bytes_from_hex("49276d206b696c6c696e6720796f757220627261696e206c696b65206120706f69736f6e6f7573206d757368726f6f6d");
@@ -1918,5 +1930,16 @@ fn main() {
 
 		println!("Set 5 Challenge 33: {} == {} (SHA-1)", bytes_to_hex(&sha1(&ss1.to_bytes_be())), bytes_to_hex(&sha1(&ss2.to_bytes_be())));
 		assert_eq!(ss1, ss2);
+	}
+
+	{ // Test AES-CBC
+		use rand::Rng;
+		let mut rng = rand::thread_rng();
+
+		let msg = bytes_from_str("We all live in a yellow submarine");
+		let key = rng.gen::<[u8;16]>();
+		let enc = aes_cbc_encrypt(&key, &msg);
+		let dec = aes_cbc_decrypt(&key, &enc).unwrap();
+		assert_eq!(msg, dec);
 	}
 }
