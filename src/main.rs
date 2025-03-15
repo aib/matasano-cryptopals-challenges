@@ -655,7 +655,7 @@ mod mt19937 {
 
 			state[0] = seed;
 			for i in 1..N-1 {
-				state[i] = F * (state[i-1] ^ (state[i-1] >> (W - 2))) + (i as u32);
+				state[i] = F.wrapping_mul(state[i-1] ^ (state[i-1] >> (W - 2))).wrapping_add(i as u32);
 			}
 
 			let mut mt = Self { state, index: 0 };
@@ -869,7 +869,7 @@ fn sha1_with_state(mut h0: u32, mut h1: u32, mut h2: u32, mut h3: u32, mut h4: u
 				k = 0xCA62C1D6;
 			}
 
-			let temp = (a.rotate_left(5)) + f + e + k + w[i];
+			let temp = a.rotate_left(5).wrapping_add(f).wrapping_add(e).wrapping_add(k).wrapping_add(w[i]);
 			e = d;
 			d = c;
 			c = b.rotate_left(30);
@@ -877,11 +877,11 @@ fn sha1_with_state(mut h0: u32, mut h1: u32, mut h2: u32, mut h3: u32, mut h4: u
 			a = temp;
 		}
 
-		h0 = h0 + a;
-		h1 = h1 + b;
-		h2 = h2 + c;
-		h3 = h3 + d;
-		h4 = h4 + e;
+		h0 = h0.wrapping_add(a);
+		h1 = h1.wrapping_add(b);
+		h2 = h2.wrapping_add(c);
+		h3 = h3.wrapping_add(d);
+		h4 = h4.wrapping_add(e);
 	}
 
 	// Until we have slice_flatten
@@ -974,7 +974,7 @@ fn md4_with_state(mut a: u32, mut b: u32, mut c: u32, mut d: u32, mut ml: usize,
 		let dd = d;
 
 		let r1_op = |a: &mut u32, b: &mut u32, c: &mut u32, d: &mut u32, k: usize, s: u32| {
-			*a = (*a + f(*b, *c, *d) + x[k]).rotate_left(s)
+			*a = (*a).wrapping_add(f(*b, *c, *d)).wrapping_add(x[k]).rotate_left(s)
 		};
 
 		r1_op(&mut a, &mut b, &mut c, &mut d,  0,  3);
@@ -995,7 +995,7 @@ fn md4_with_state(mut a: u32, mut b: u32, mut c: u32, mut d: u32, mut ml: usize,
 		r1_op(&mut b, &mut c, &mut d, &mut a, 15, 19);
 
 		let r2_op = |a: &mut u32, b: &mut u32, c: &mut u32, d: &mut u32, k: usize, s: u32| {
-			*a = (*a + g(*b, *c, *d) + x[k] + 0x5A827999).rotate_left(s)
+			*a = (*a).wrapping_add(g(*b, *c, *d)).wrapping_add(x[k]).wrapping_add(0x5A827999).rotate_left(s)
 		};
 
 		r2_op(&mut a, &mut b, &mut c, &mut d,  0,  3);
@@ -1016,7 +1016,7 @@ fn md4_with_state(mut a: u32, mut b: u32, mut c: u32, mut d: u32, mut ml: usize,
 		r2_op(&mut b, &mut c, &mut d, &mut a, 15, 13);
 
 		let r3_op = |a: &mut u32, b: &mut u32, c: &mut u32, d: &mut u32, k: usize, s: u32| {
-			*a = (*a + h(*b, *c, *d) + x[k] + 0x6ED9EBA1).rotate_left(s)
+			*a = (*a).wrapping_add(h(*b, *c, *d)).wrapping_add(x[k]).wrapping_add(0x6ED9EBA1).rotate_left(s)
 		};
 
 		r3_op(&mut a, &mut b, &mut c, &mut d,  0,  3);
@@ -1036,10 +1036,10 @@ fn md4_with_state(mut a: u32, mut b: u32, mut c: u32, mut d: u32, mut ml: usize,
 		r3_op(&mut c, &mut d, &mut a, &mut b,  7, 11);
 		r3_op(&mut b, &mut c, &mut d, &mut a, 15, 15);
 
-		a += aa;
-		b += bb;
-		c += cc;
-		d += dd;
+		a = a.wrapping_add(aa);
+		b = b.wrapping_add(bb);
+		c = c.wrapping_add(cc);
+		d = d.wrapping_add(dd);
 	}
 
 	let mut v = Vec::with_capacity(16);
