@@ -1942,4 +1942,37 @@ fn main() {
 		let dec = aes_cbc_decrypt(&key, &enc).unwrap();
 		assert_eq!(msg, dec);
 	}
+
+	{ // Set 5 Challenge 34
+		struct EchoBot {
+			pub public: BigUint,
+			session: BigUint,
+		}
+		impl EchoBot {
+			fn create(p: BigUint, g: BigUint, client_public: BigUint) -> Self {
+				let (private, public) = dh_gen_key(&p, &g);
+				let session = dh_shared_secret(&p, &private, &client_public);
+				Self { public, session }
+			}
+			fn echo(&self, message: &[u8]) -> Vec<u8> {
+				let key = &sha1(&self.session.to_bytes_be())[0..16];
+				let dec = aes_cbc_decrypt(&key, message).unwrap();
+				aes_cbc_encrypt(&key, &dec)
+			}
+		}
+		let (p, g) = nist_p_g();
+
+		{
+			let (a, a_pub) = dh_gen_key(&p, &g);
+			let echo_bot = EchoBot::create(p.clone(), g.clone(), a_pub);
+			let session = dh_shared_secret(&p, &a, &echo_bot.public);
+			let key = &sha1(&session.to_bytes_be())[0..16];
+
+			let msg = bytes_from_str("We all live in a yellow submarine");
+			let msg_enc = aes_cbc_encrypt(&key, &msg);
+			let reply_enc = echo_bot.echo(&msg_enc);
+			let reply = aes_cbc_decrypt(&key, &reply_enc).unwrap();
+			assert_eq!(msg, reply);
+		}
+	}
 }
