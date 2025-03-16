@@ -1284,6 +1284,22 @@ impl SRPVerification {
 	}
 }
 
+fn generate_dictionary(length: u32) -> HashSet<String> {
+	use rand::Rng;
+	use rand::prelude::SliceRandom;
+	let mut rng = rand::thread_rng();
+	let syllables = vec!("na", "ru", "to", "ki", "ku", "shi", "o", "ru", "wa", "ni", "no", "ha", "ma");
+
+	let words = (0..length).map(|_| {
+		let word = (0..rng.gen_range(3..=7))
+			.map(|_| *syllables.choose(&mut rng).unwrap())
+			.collect::<Vec<&str>>();
+		word.join("")
+	}).collect::<Vec<_>>();
+
+	HashSet::from_iter(words)
+}
+
 fn main() {
 	{ // Set 1 Challenge 1
 		let num = bytes_from_hex("49276d206b696c6c696e6720796f757220627261696e206c696b65206120706f69736f6e6f7573206d757368726f6f6d");
@@ -2275,6 +2291,44 @@ fn main() {
 			};
 			assert!(!verify("bad_password"));
 			assert!(verify("hunter2"));
+		}
+
+		{
+			use rand::prelude::SliceRandom;
+			let mut rng = rand::thread_rng();
+			let dictionary = generate_dictionary(128).into_iter().collect::<Vec<String>>();
+			let secret_password = dictionary.choose(&mut rng).unwrap();
+
+			let (mitm_private, mitm_public) = dh_gen_key(&n, &g);
+			let u = BigUint::from_bytes_be(&get_random_bytes(16));
+			let salt = get_random_bytes(8);
+
+			let (client_public, client_mac) = {
+				let (c_priv, c_pub) = dh_gen_key(&n, &g);
+				let mut salt_password = salt.clone();
+				salt_password.append(&mut bytes_from_str(secret_password));
+				let x = BigUint::from_bytes_be(&sha256(&salt_password));
+				let s = mitm_public.modpow(&(&c_priv + &u * x), &n);
+				let k = sha256(&s.to_bytes_be());
+				let mac = hmac_sha256(&k, &salt);
+				(c_pub, mac)
+			};
+
+			let found_password = dictionary.iter().find(|word| {
+				let mut salt_password = salt.clone();
+				salt_password.append(&mut bytes_from_str(word));
+				let x = BigUint::from_bytes_be(&sha256(&salt_password));
+				let v = g.modpow(&x, &n);
+
+				let s = (&client_public * v.modpow(&u, &n)).modpow(&mitm_private, &n);
+				let k = sha256(&s.to_bytes_be());
+				let mac = hmac_sha256(&k, &salt);
+
+				mac == client_mac
+			});
+
+			println!("Set 5 Challenge 38: Password: {}", found_password.unwrap());
+			assert_eq!(secret_password, found_password.unwrap());
 		}
 	}
 }
