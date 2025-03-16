@@ -1187,6 +1187,41 @@ fn aes_cbc_decrypt(key: &[u8], ciphertext_and_iv: &[u8]) -> Option<Vec<u8>> {
 	Some(cbc_decrypt(aes_128_decrypt_block, 16, &key, &iv, &ct))
 }
 
+struct DHParty {
+	p: BigUint,
+	private: BigUint,
+	pub public: BigUint,
+}
+
+impl DHParty {
+	pub fn new(p: BigUint, g: BigUint) -> Self {
+		let (private, public) = dh_gen_key(&p, &g);
+		Self { p, public, private }
+	}
+
+	pub fn create_session(&self, pubkey: &BigUint) -> DHSession {
+		let shared = dh_shared_secret(&self.p, &self.private, &pubkey);
+		let mut session_key = sha1(&shared.to_bytes_be());
+		session_key.truncate(16);
+		DHSession { session_key }
+	}
+}
+
+struct DHSession {
+	session_key: Vec<u8>,
+}
+
+impl DHSession {
+	pub fn echo(&self, message: &[u8]) -> Vec<u8> {
+		let dec = aes_cbc_decrypt(&self.session_key, message).unwrap();
+		self.say(&dec)
+	}
+
+	pub fn say(&self, message: &[u8]) -> Vec<u8> {
+		aes_cbc_encrypt(&self.session_key, &message)
+	}
+}
+
 fn main() {
 	{ // Set 1 Challenge 1
 		let num = bytes_from_hex("49276d206b696c6c696e6720796f757220627261696e206c696b65206120706f69736f6e6f7573206d757368726f6f6d");
@@ -1944,35 +1979,40 @@ fn main() {
 	}
 
 	{ // Set 5 Challenge 34
-		struct EchoBot {
-			pub public: BigUint,
-			session: BigUint,
-		}
-		impl EchoBot {
-			fn create(p: BigUint, g: BigUint, client_public: BigUint) -> Self {
-				let (private, public) = dh_gen_key(&p, &g);
-				let session = dh_shared_secret(&p, &private, &client_public);
-				Self { public, session }
-			}
-			fn echo(&self, message: &[u8]) -> Vec<u8> {
-				let key = &sha1(&self.session.to_bytes_be())[0..16];
-				let dec = aes_cbc_decrypt(&key, message).unwrap();
-				aes_cbc_encrypt(&key, &dec)
-			}
-		}
 		let (p, g) = nist_p_g();
 
 		{
 			let (a, a_pub) = dh_gen_key(&p, &g);
-			let echo_bot = EchoBot::create(p.clone(), g.clone(), a_pub);
-			let session = dh_shared_secret(&p, &a, &echo_bot.public);
-			let key = &sha1(&session.to_bytes_be())[0..16];
+			let echo_bot = DHParty::new(p.clone(), g.clone());
+			let shared = dh_shared_secret(&p, &a, &echo_bot.public);
+			let session_key = &sha1(&shared.to_bytes_be())[0..16];
+			let echo_bot = echo_bot.create_session(&a_pub);
 
 			let msg = bytes_from_str("We all live in a yellow submarine");
-			let msg_enc = aes_cbc_encrypt(&key, &msg);
+			let msg_enc = aes_cbc_encrypt(&session_key, &msg);
 			let reply_enc = echo_bot.echo(&msg_enc);
-			let reply = aes_cbc_decrypt(&key, &reply_enc).unwrap();
+			let reply = aes_cbc_decrypt(&session_key, &reply_enc).unwrap();
 			assert_eq!(msg, reply);
+		}
+
+		{
+			let a = DHParty::new(p.clone(), g.clone());
+			let b = DHParty::new(p.clone(), g.clone());
+
+			let b_session = b.create_session(&p);
+			let a_session = a.create_session(&p);
+
+			let msg = bytes_from_str("We all live in a yellow submarine");
+			let a_msg = a_session.say(&msg);
+			let b_msg = b_session.say(&msg);
+
+			let shared_key = &sha1(&[0])[0..16];
+			let a_dec = aes_cbc_decrypt(shared_key, &a_msg).unwrap();
+			let b_dec = aes_cbc_decrypt(shared_key, &b_msg).unwrap();
+
+			println!("Set 5 Challenge 34: p secret = {}", bytes_to_hex(shared_key));
+			assert_eq!(msg, a_dec);
+			assert_eq!(msg, b_dec);
 		}
 	}
 }
