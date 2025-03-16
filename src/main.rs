@@ -2175,4 +2175,47 @@ fn main() {
 			assert!(verifier.verify(&mac));
 		}
 	}
+
+	{ // Set 5 Challenge 37
+		let (n, g) = nist_p_g();
+		let k = BigUint::from_bytes_be(&[3]);
+
+		let mut srp = SRPServer::new(n.clone(), g.clone(), k.clone());
+		srp.add("aib", "hunter2");
+		let srp = srp;
+
+		{
+			let pub0 = BigUint::ZERO;
+			let verifier = srp.start_verification("aib", &pub0).unwrap();
+			let vk = sha256(&[0]);
+			let mac = hmac_sha256(&vk, &verifier.salt);
+			assert!(verifier.verify(&mac));
+		}
+
+		{
+			let pub_n = n.clone();
+			let verifier = srp.start_verification("aib", &pub_n).unwrap();
+			let vk = sha256(&[0]);
+			let mac = hmac_sha256(&vk, &verifier.salt);
+			assert!(verifier.verify(&mac));
+		}
+
+		{
+			let pub_n2 = &n + &n;
+			let verifier = srp.start_verification("aib", &pub_n2).unwrap();
+			let vk = sha256(&[0]);
+			let mac = hmac_sha256(&vk, &verifier.salt);
+			assert!(verifier.verify(&mac));
+		}
+
+		{
+			let pub42 = &n * BigUint::from_bytes_be(&[42]);
+			let verifier = srp.start_verification("aib", &pub42).unwrap();
+			let vk = sha256(&[0]);
+			let mac = hmac_sha256(&vk, &verifier.salt);
+			assert!(verifier.verify(&mac));
+		}
+
+		println!("Set 5 Challenge 37: SRP broken for A = 0, N, N*2, N*42");
+	}
 }
