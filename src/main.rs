@@ -51,10 +51,14 @@ fn replace_char_at(src: &str, index: usize, c: char) -> String {
 	chars.into_iter().collect()
 }
 
+fn sha256(bs: &[u8]) -> Vec<u8> {
+	openssl::hash::hash(openssl::hash::MessageDigest::sha256(), bs)
+		.expect("Unable to hash")
+		.to_vec()
+}
+
 fn sha256str(bs: &[u8]) -> String {
-	let digest = openssl::hash::hash(openssl::hash::MessageDigest::sha256(), bs)
-		.expect("Unable to hash");
-	bytes_to_hex(&digest)
+	bytes_to_hex(&sha256(bs))
 }
 
 fn get_random_bytes(size: usize) -> Vec<u8> {
@@ -1116,6 +1120,10 @@ fn hmac_sha1(key: &[u8], message: &[u8]) -> Vec<u8> {
 	hmac(sha1, 64, key, message)
 }
 
+fn hmac_sha256(key: &[u8], message: &[u8]) -> Vec<u8> {
+	hmac(sha256, 64, key, message)
+}
+
 fn timed_http_get(url: &str) -> (bool, Duration) {
 	let start_time = Instant::now();
 	let okay = ureq::get(url).call().is_ok();
@@ -1219,6 +1227,60 @@ impl DHSession {
 
 	pub fn say(&self, message: &[u8]) -> Vec<u8> {
 		aes_cbc_encrypt(&self.session_key, &message)
+	}
+}
+
+struct SRPServer {
+	n: BigUint,
+	g: BigUint,
+	k: BigUint,
+	users: HashMap<String, (Vec<u8>, BigUint)>,
+}
+
+impl SRPServer {
+	pub fn new(n: BigUint, g: BigUint, k: BigUint) -> Self {
+		let users = HashMap::new();
+		Self { n, g, k, users }
+	}
+
+	pub fn add(&mut self, username: &str, password: &str) {
+		let salt = get_random_bytes(8);
+
+		let mut salt_password = salt.clone();
+		salt_password.append(&mut bytes_from_str(password));
+		let xh = sha256(&salt_password);
+		let x = BigUint::from_bytes_be(&xh);
+		let v = self.g.modpow(&x, &self.n);
+		self.users.insert(username.to_owned(), (salt, v));
+	}
+
+	pub fn start_verification(&self, username: &str, public: &BigUint) -> Option<SRPVerification> {
+		let (salt, v) = self.users.get(username)?
+			.clone();
+		let (dh_private, dh_public) = dh_gen_key(&self.n, &self.g);
+
+		let b = (&self.k * &v + dh_public) % &self.n;
+		Some(SRPVerification { n: self.n.clone(), private: dh_private, public: b, client_public: public.clone(), salt, v: v.clone() })
+	}
+}
+
+struct SRPVerification {
+	n: BigUint,
+	private: BigUint,
+	pub public: BigUint,
+	client_public: BigUint,
+	pub salt: Vec<u8>,
+	v: BigUint,
+}
+
+impl SRPVerification {
+	pub fn verify(&self, mac: &[u8]) -> bool {
+		let uh = sha256(&[self.client_public.to_bytes_be(), self.public.to_bytes_be()].concat());
+		let u = BigUint::from_bytes_be(&uh);
+		let verify_s = (&self.client_public * self.v.modpow(&u, &self.n)).modpow(&self.private, &self.n);
+		let verify_k = sha256(&verify_s.to_bytes_be());
+		let own_mac = hmac_sha256(&verify_k, &self.salt);
+		own_mac == mac
 	}
 }
 
@@ -2083,5 +2145,34 @@ fn main() {
 		}
 
 		println!("Set 5 Challenge 35: DH broken for g = 1, p, p - 1, 0");
+	}
+
+	{ // Set 5 Challenge 36
+		let (n, g) = nist_p_g();
+		let k = BigUint::from_bytes_be(&[3]);
+
+		let mut srp = SRPServer::new(n.clone(), g.clone(), k.clone());
+		srp.add("aib", "hunter2");
+		let srp = srp;
+
+		{
+			let (c_priv, c_pub) = dh_gen_key(&n, &g);
+			let verifier = srp.start_verification("aib", &c_pub).unwrap();
+
+			let uh = sha256(&[c_pub.to_bytes_be(), verifier.public.to_bytes_be()].concat());
+			let u = BigUint::from_bytes_be(&uh);
+			let mut salt_password = verifier.salt.clone();
+			salt_password.append(&mut bytes_from_str("hunter2"));
+			let xh = sha256(&salt_password);
+			let x = BigUint::from_bytes_be(&xh);
+
+			let verify_s = (&verifier.public + (&n - (&k * g.modpow(&x, &n)) % &n))
+				.modpow(&(c_priv + u * x), &n);
+			let verify_k = sha256(&verify_s.to_bytes_be());
+			let mac = hmac_sha256(&verify_k, &verifier.salt);
+
+			println!("Set 5 Challenge 36: MAC {}", bytes_to_hex(&mac));
+			assert!(verifier.verify(&mac));
+		}
 	}
 }
