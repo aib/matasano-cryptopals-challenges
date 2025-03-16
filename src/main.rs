@@ -2015,4 +2015,73 @@ fn main() {
 			assert_eq!(msg, b_dec);
 		}
 	}
+
+	{ // Set 5 Challenge 35
+		let (p, _) = nist_p_g();
+		let msg = bytes_from_str("We all live in a yellow submarine");
+
+		let exchange_messages = |p: &BigUint, g: &BigUint| -> (Vec<u8>, Vec<u8>) {
+			let a = DHParty::new(p.clone(), g.clone());
+			let b = DHParty::new(p.clone(), g.clone());
+			let a_session = a.create_session(&b.public);
+			let b_session = b.create_session(&a.public);
+			let a_msg = a_session.say(&msg);
+			let b_msg = b_session.say(&msg);
+			(a_msg, b_msg)
+		};
+
+		{
+			let g = BigUint::from_bytes_be(&[1]);
+			let (a_msg, b_msg) = exchange_messages(&p, &g);
+
+			let shared_key = &sha1(&[1])[0..16];
+
+			let a_dec = aes_cbc_decrypt(shared_key, &a_msg).unwrap();
+			let b_dec = aes_cbc_decrypt(shared_key, &b_msg).unwrap();
+			assert_eq!(msg, a_dec);
+			assert_eq!(msg, b_dec);
+		}
+
+		{
+			let g = p.clone();
+			let (a_msg, b_msg) = exchange_messages(&p, &g);
+
+			let shared_key = &sha1(&[0])[0..16];
+
+			let a_dec = aes_cbc_decrypt(shared_key, &a_msg).unwrap();
+			let b_dec = aes_cbc_decrypt(shared_key, &b_msg).unwrap();
+			assert_eq!(msg, a_dec);
+			assert_eq!(msg, b_dec);
+		}
+
+		{
+			let g = p.clone() - BigUint::from_bytes_be(&[1]);
+			let (a_msg, b_msg) = exchange_messages(&p, &g);
+
+			let shared_key1 = &sha1(&[1])[0..16];
+			let shared_key2 = &sha1(&g.to_bytes_be())[0..16];
+
+			let a_dec1 = aes_cbc_decrypt(shared_key1, &a_msg).unwrap();
+			let a_dec2 = aes_cbc_decrypt(shared_key2, &a_msg).unwrap();
+			let b_dec1 = aes_cbc_decrypt(shared_key1, &b_msg).unwrap();
+			let b_dec2 = aes_cbc_decrypt(shared_key2, &b_msg).unwrap();
+
+			assert!(a_dec1 == msg || a_dec2 == msg);
+			assert!(b_dec1 == msg || b_dec2 == msg);
+		}
+
+		{
+			let g = BigUint::ZERO;
+			let (a_msg, b_msg) = exchange_messages(&p, &g);
+
+			let shared_key = &sha1(&[0])[0..16];
+
+			let a_dec = aes_cbc_decrypt(shared_key, &a_msg).unwrap();
+			let b_dec = aes_cbc_decrypt(shared_key, &b_msg).unwrap();
+			assert_eq!(msg, a_dec);
+			assert_eq!(msg, b_dec);
+		}
+
+		println!("Set 5 Challenge 35: DH broken for g = 1, p, p - 1, 0");
+	}
 }
