@@ -2218,4 +2218,63 @@ fn main() {
 
 		println!("Set 5 Challenge 37: SRP broken for A = 0, N, N*2, N*42");
 	}
+
+	{ // Set 5 Challenge 38
+		struct SimplifiedSRP {
+			n: BigUint,
+			private: BigUint,
+			pub public: BigUint,
+			pub salt: Vec<u8>,
+			v: BigUint,
+			client_public: Option<BigUint>,
+			u: Option<BigUint>,
+		}
+
+		impl SimplifiedSRP {
+			pub fn new(n: BigUint, g: BigUint, password: &str) -> Self {
+				let salt = get_random_bytes(8);
+				let mut salt_password = salt.clone();
+				salt_password.append(&mut bytes_from_str(password));
+				let x = BigUint::from_bytes_be(&sha256(&salt_password));
+				let v = g.modpow(&x, &n);
+				let (private, public) = dh_gen_key(&n, &g);
+				Self { n, private, public, salt, v, client_public: None, u: None }
+			}
+
+			pub fn start_verification(&mut self, client_public: BigUint) -> BigUint {
+				self.client_public = Some(client_public);
+				let u = BigUint::from_bytes_be(&get_random_bytes(16));
+				self.u = Some(u.clone());
+				return u;
+			}
+
+			pub fn verify(&self, mac: &[u8]) -> bool {
+				let client_public = self.client_public.as_ref().unwrap();
+				let u = self.u.as_ref().unwrap();
+				let s = (client_public * self.v.modpow(&u, &self.n)).modpow(&self.private, &self.n);
+				let k = sha256(&s.to_bytes_be());
+				let own_mac = hmac_sha256(&k, &self.salt);
+				own_mac == mac
+			}
+		}
+
+		let (n, g) = nist_p_g();
+
+		{
+			let mut ssrp = SimplifiedSRP::new(n.clone(), g.clone(), "hunter2");
+			let (c_priv, c_pub) = dh_gen_key(&n, &g);
+			let u = ssrp.start_verification(c_pub);
+			let verify = |password: &str| {
+				let mut salt_password = ssrp.salt.clone();
+				salt_password.append(&mut bytes_from_str(password));
+				let x = BigUint::from_bytes_be(&sha256(&salt_password));
+				let s = ssrp.public.modpow(&(&c_priv + &u * x), &n);
+				let k = sha256(&s.to_bytes_be());
+				let mac = hmac_sha256(&k, &ssrp.salt);
+				ssrp.verify(&mac)
+			};
+			assert!(!verify("bad_password"));
+			assert!(verify("hunter2"));
+		}
+	}
 }
