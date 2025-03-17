@@ -2,7 +2,7 @@ use std::collections::{HashMap, HashSet};
 use std::hash::Hash;
 use std::time::{Duration, Instant};
 
-use num_bigint::BigUint;
+use num_bigint::{BigInt, BigUint};
 use indexmap::IndexMap;
 
 fn bytes_from_hex(hstr: &str) -> Vec<u8> {
@@ -1300,6 +1300,41 @@ fn generate_dictionary(length: u32) -> HashSet<String> {
 	HashSet::from_iter(words)
 }
 
+fn egcd(a: BigUint, b: BigUint) -> (BigUint, BigInt, BigInt) {
+	let (
+		(mut a, mut b),
+		(mut sprev, mut s),
+		(mut tprev, mut t),
+	) = if b < a {
+		(
+			(BigInt::from(a), BigInt::from(b)),
+			(BigInt::ZERO + 1, BigInt::ZERO),
+			(BigInt::ZERO, BigInt::ZERO + 1),
+		)
+	} else {
+		(
+			(BigInt::from(b), BigInt::from(a)),
+			(BigInt::ZERO, BigInt::ZERO + 1),
+			(BigInt::ZERO + 1, BigInt::ZERO),
+		)
+	};
+
+	loop {
+		let q = &a / &b;
+		let r = &a % &b;
+		let snew = sprev - &q * &s;
+		let tnew = tprev - &q * &t;
+		if r == BigInt::ZERO {
+			break;
+		}
+		(sprev, s) = (s, snew);
+		(tprev, t) = (t, tnew);
+		(a, b) = (b, r);
+	}
+
+	(b.to_biguint().unwrap(), s, t)
+}
+
 fn main() {
 	{ // Set 1 Challenge 1
 		let num = bytes_from_hex("49276d206b696c6c696e6720796f757220627261696e206c696b65206120706f69736f6e6f7573206d757368726f6f6d");
@@ -2330,5 +2365,35 @@ fn main() {
 			println!("Set 5 Challenge 38: Password: {}", found_password.unwrap());
 			assert_eq!(secret_password, found_password.unwrap());
 		}
+	}
+
+	{ // EGCD
+		fn bigu(val: u32) -> BigUint { BigUint::ZERO + val }
+		fn bigi(val: i32) -> BigInt { BigInt::ZERO + val }
+
+		assert_eq!(
+			egcd(bigu(46), bigu(240)),
+			(bigu(2), bigi(47), bigi(-9)),
+		);
+		assert_eq!(
+			egcd(bigu(240), bigu(46)),
+			(bigu(2), bigi(-9), bigi(47)),
+		);
+		assert_eq!(
+			egcd(bigu(1071), bigu(462)),
+			(bigu(21), bigi(-3), bigi(7)),
+		);
+		assert_eq!(
+			egcd(bigu(462), bigu(1071)),
+			(bigu(21), bigi(7), bigi(-3)),
+		);
+		assert_eq!(
+			egcd(bigu(30), bigu(5)),
+			(bigu(5), bigi(0), bigi(1)),
+		);
+		assert_eq!(
+			egcd(bigu(5), bigu(30)),
+			(bigu(5), bigi(1), bigi(0)),
+		);
 	}
 }
