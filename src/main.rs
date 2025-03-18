@@ -9,6 +9,11 @@ fn bytes_from_hex(hstr: &str) -> Vec<u8> {
 	hex::decode(hstr).expect("Error decoding hex")
 }
 
+fn bytes_from_hex_relaxed(hstr: &str) -> Vec<u8> {
+	let purified: String = hstr.chars().filter(char::is_ascii_hexdigit).collect();
+	bytes_from_hex(&purified)
+}
+
 fn bytes_from_base64(estr: &str) -> Vec<u8> {
 	use base64::Engine;
 	let stripped: String = estr.chars().filter(|c| !c.is_whitespace()).collect();
@@ -1344,6 +1349,44 @@ fn invmod(a: BigUint, m: BigUint) -> BigUint {
 	(x + BigInt::from(m.clone())).to_biguint().unwrap() % m
 }
 
+mod rsa {
+	use num_bigint::{BigInt, BigUint};
+	use super::{big, invmod};
+
+	pub type Key = (BigUint, BigUint);
+
+	pub struct RSA {
+		private: Option<Key>,
+		public: Option<Key>,
+	}
+
+	impl RSA {
+		pub fn from_primes(p: BigUint, q: BigUint) -> Self {
+			let n = p.clone() * q.clone();
+			let et = BigInt::to_biguint(&((BigInt::from(p) - 1) * (BigInt::from(q) - 1))).unwrap();
+			let e = big(3);
+			let d = invmod(e.clone(), et);
+			Self::from_keypair((d, n.clone()), (e, n.clone()))
+		}
+
+		pub fn from_keypair(private: Key, public: Key) -> Self {
+			Self { private: Some(private), public: Some(public) }
+		}
+
+		pub fn encrypt(&self, m: &BigUint) -> BigUint {
+			let (e, n) = self.public.as_ref()
+				.expect("No public key");
+			m.modpow(e, n)
+		}
+
+		pub fn decrypt(&self, m: &BigUint) -> BigUint {
+			let (d, n) = self.private.as_ref()
+				.expect("No private key");
+			m.modpow(d, n)
+		}
+	}
+}
+
 fn main() {
 	{ // Set 1 Challenge 1
 		let num = bytes_from_hex("49276d206b696c6c696e6720796f757220627261696e206c696b65206120706f69736f6e6f7573206d757368726f6f6d");
@@ -2410,6 +2453,47 @@ fn main() {
 		assert_eq!(invmod(big(37), big(2)), big(1));
 		assert_eq!(invmod(big(271), big(383)), big(106));
 		assert_eq!(invmod(big(17), big(3120)), big(2753));
+	}
 
+	{ // Set 5 Challenge 39
+		let pair1 = rsa::RSA::from_primes(big(23), big(59));
+		let msg = big(42);
+		let enc = pair1.encrypt(&msg);
+		let dec = pair1.decrypt(&enc);
+		assert_eq!(msg, dec);
+
+		// From `openssl genrsa -3 | openssl rsa -text`
+		let p = BigUint::from_bytes_be(&bytes_from_hex_relaxed("
+			00:c6:d9:14:8a:22:e0:47:67:76:68:00:7f:95:54:
+			c7:87:f9:dc:39:e9:8e:0a:3a:73:ba:b9:eb:25:f3:
+			6c:bc:d8:99:4b:61:f8:c3:d9:a4:58:b1:37:16:bd:
+			8f:62:65:06:a6:1a:6b:50:a8:2c:d8:41:a4:aa:85:
+			3a:44:f1:b1:3b:80:87:eb:19:7f:d8:af:0a:7c:ec:
+			81:f9:56:08:23:c7:01:16:af:38:46:86:3b:3c:28:
+			20:ab:15:ac:fd:a2:8b:81:30:05:34:27:cf:a6:76:
+			00:43:e9:f8:c0:58:77:f1:64:a1:18:53:ad:7a:5f:
+			b5:98:39:c1:c5:38:b1:d8:17
+		"));
+
+		let q = BigUint::from_bytes_be(&bytes_from_hex_relaxed("
+			00:c4:65:06:04:fd:39:0a:e6:39:93:24:9b:19:72:
+			41:a9:7d:31:cb:04:bd:23:7b:eb:85:39:19:65:83:
+			17:9d:73:fa:c4:a8:58:d8:40:3a:a0:0e:f2:d7:62:
+			c6:7e:10:82:74:4e:a1:29:26:ed:1c:80:f1:c7:be:
+			70:2f:22:51:f0:6a:11:cf:dc:1b:fa:80:79:4d:69:
+			39:51:b9:e5:f7:44:bf:b1:48:ec:66:6e:47:c6:a0:
+			08:9d:b9:db:da:68:20:d1:b1:c3:17:8a:aa:66:54:
+			1f:ad:de:e2:a6:cd:0f:9e:b2:55:7d:a0:73:9f:22:
+			72:19:fa:11:9e:42:df:08:19
+		"));
+
+		let pair2 = rsa::RSA::from_primes(p, q);
+		let msg = big(42);
+		let enc = pair2.encrypt(&msg);
+		let dec = pair2.decrypt(&enc);
+		assert_eq!(msg, dec);
+
+		println!("Set 5 Challenge 39: RSA {} -> {} -> {}", &msg, &enc, &dec);
+		assert_eq!(msg, dec);
 	}
 }
