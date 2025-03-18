@@ -1300,6 +1300,10 @@ fn generate_dictionary(length: u32) -> HashSet<String> {
 	HashSet::from_iter(words)
 }
 
+fn big(val: u32) -> BigUint {
+	BigUint::ZERO + val
+}
+
 fn egcd(a: BigUint, b: BigUint) -> (BigUint, BigInt, BigInt) {
 	let (
 		(mut a, mut b),
@@ -2373,41 +2377,39 @@ fn main() {
 	}
 
 	{ // EGCD
-		fn bigu(val: u32) -> BigUint { BigUint::ZERO + val }
 		fn bigi(val: i32) -> BigInt { BigInt::ZERO + val }
 
 		assert_eq!(
-			egcd(bigu(46), bigu(240)),
-			(bigu(2), bigi(47), bigi(-9)),
+			egcd(big(46), big(240)),
+			(big(2), bigi(47), bigi(-9)),
 		);
 		assert_eq!(
-			egcd(bigu(240), bigu(46)),
-			(bigu(2), bigi(-9), bigi(47)),
+			egcd(big(240), big(46)),
+			(big(2), bigi(-9), bigi(47)),
 		);
 		assert_eq!(
-			egcd(bigu(1071), bigu(462)),
-			(bigu(21), bigi(-3), bigi(7)),
+			egcd(big(1071), big(462)),
+			(big(21), bigi(-3), bigi(7)),
 		);
 		assert_eq!(
-			egcd(bigu(462), bigu(1071)),
-			(bigu(21), bigi(7), bigi(-3)),
+			egcd(big(462), big(1071)),
+			(big(21), bigi(7), bigi(-3)),
 		);
 		assert_eq!(
-			egcd(bigu(30), bigu(5)),
-			(bigu(5), bigi(0), bigi(1)),
+			egcd(big(30), big(5)),
+			(big(5), bigi(0), bigi(1)),
 		);
 		assert_eq!(
-			egcd(bigu(5), bigu(30)),
-			(bigu(5), bigi(1), bigi(0)),
+			egcd(big(5), big(30)),
+			(big(5), bigi(1), bigi(0)),
 		);
 	}
 
 	{ // invmod
-		fn bigu(val: u32) -> BigUint { BigUint::ZERO + val }
+		assert_eq!(invmod(big(2), big(37)), big(19));
+		assert_eq!(invmod(big(37), big(2)), big(1));
+		assert_eq!(invmod(big(271), big(383)), big(106));
+		assert_eq!(invmod(big(17), big(3120)), big(2753));
 
-		assert_eq!(invmod(bigu(2), bigu(37)), bigu(19));
-		assert_eq!(invmod(bigu(37), bigu(2)), bigu(1));
-		assert_eq!(invmod(bigu(271), bigu(383)), bigu(106));
-		assert_eq!(invmod(bigu(17), bigu(3120)), bigu(2753));
 	}
 }
