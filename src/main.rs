@@ -1335,6 +1335,11 @@ fn egcd(a: BigUint, b: BigUint) -> (BigUint, BigInt, BigInt) {
 	(b.to_biguint().unwrap(), s, t)
 }
 
+fn invmod(a: BigUint, m: BigUint) -> BigUint {
+	let (_, x, _) = egcd(a, m.clone());
+	(x + BigInt::from(m.clone())).to_biguint().unwrap() % m
+}
+
 fn main() {
 	{ // Set 1 Challenge 1
 		let num = bytes_from_hex("49276d206b696c6c696e6720796f757220627261696e206c696b65206120706f69736f6e6f7573206d757368726f6f6d");
@@ -2395,5 +2400,14 @@ fn main() {
 			egcd(bigu(5), bigu(30)),
 			(bigu(5), bigi(1), bigi(0)),
 		);
+	}
+
+	{ // invmod
+		fn bigu(val: u32) -> BigUint { BigUint::ZERO + val }
+
+		assert_eq!(invmod(bigu(2), bigu(37)), bigu(19));
+		assert_eq!(invmod(bigu(37), bigu(2)), bigu(1));
+		assert_eq!(invmod(bigu(271), bigu(383)), bigu(106));
+		assert_eq!(invmod(bigu(17), bigu(3120)), bigu(2753));
 	}
 }
