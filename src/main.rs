@@ -1309,20 +1309,20 @@ fn big(val: u32) -> BigUint {
 	BigUint::ZERO + val
 }
 
-fn egcd(a: BigUint, b: BigUint) -> (BigUint, BigInt, BigInt) {
+fn egcd(a: &BigUint, b: &BigUint) -> (BigUint, BigInt, BigInt) {
 	let (
 		(mut a, mut b),
 		(mut sprev, mut s),
 		(mut tprev, mut t),
 	) = if b < a {
 		(
-			(BigInt::from(a), BigInt::from(b)),
+			(BigInt::from(a.clone()), BigInt::from(b.clone())),
 			(BigInt::ZERO + 1, BigInt::ZERO),
 			(BigInt::ZERO, BigInt::ZERO + 1),
 		)
 	} else {
 		(
-			(BigInt::from(b), BigInt::from(a)),
+			(BigInt::from(b.clone()), BigInt::from(a.clone())),
 			(BigInt::ZERO, BigInt::ZERO + 1),
 			(BigInt::ZERO + 1, BigInt::ZERO),
 		)
@@ -1344,8 +1344,8 @@ fn egcd(a: BigUint, b: BigUint) -> (BigUint, BigInt, BigInt) {
 	(b.to_biguint().unwrap(), s, t)
 }
 
-fn invmod(a: BigUint, m: BigUint) -> BigUint {
-	let (_, x, _) = egcd(a, m.clone());
+fn invmod(a: &BigUint, m: &BigUint) -> BigUint {
+	let (_, x, _) = egcd(a, m);
 	(x + BigInt::from(m.clone())).to_biguint().unwrap() % m
 }
 
@@ -1365,7 +1365,7 @@ mod rsa {
 			let n = p.clone() * q.clone();
 			let et = BigInt::to_biguint(&((BigInt::from(p) - 1) * (BigInt::from(q) - 1))).unwrap();
 			let e = big(3);
-			let d = invmod(e.clone(), et);
+			let d = invmod(&e, &et);
 			Self::from_keypair((d, n.clone()), (e, n.clone()))
 		}
 
@@ -2435,36 +2435,36 @@ fn main() {
 		fn bigi(val: i32) -> BigInt { BigInt::ZERO + val }
 
 		assert_eq!(
-			egcd(big(46), big(240)),
+			egcd(&big(46), &big(240)),
 			(big(2), bigi(47), bigi(-9)),
 		);
 		assert_eq!(
-			egcd(big(240), big(46)),
+			egcd(&big(240), &big(46)),
 			(big(2), bigi(-9), bigi(47)),
 		);
 		assert_eq!(
-			egcd(big(1071), big(462)),
+			egcd(&big(1071), &big(462)),
 			(big(21), bigi(-3), bigi(7)),
 		);
 		assert_eq!(
-			egcd(big(462), big(1071)),
+			egcd(&big(462), &big(1071)),
 			(big(21), bigi(7), bigi(-3)),
 		);
 		assert_eq!(
-			egcd(big(30), big(5)),
+			egcd(&big(30), &big(5)),
 			(big(5), bigi(0), bigi(1)),
 		);
 		assert_eq!(
-			egcd(big(5), big(30)),
+			egcd(&big(5), &big(30)),
 			(big(5), bigi(1), bigi(0)),
 		);
 	}
 
 	{ // invmod
-		assert_eq!(invmod(big(2), big(37)), big(19));
-		assert_eq!(invmod(big(37), big(2)), big(1));
-		assert_eq!(invmod(big(271), big(383)), big(106));
-		assert_eq!(invmod(big(17), big(3120)), big(2753));
+		assert_eq!(invmod(&big(2), &big(37)), big(19));
+		assert_eq!(invmod(&big(37), &big(2)), big(1));
+		assert_eq!(invmod(&big(271), &big(383)), big(106));
+		assert_eq!(invmod(&big(17), &big(3120)), big(2753));
 	}
 
 	{ // Set 5 Challenge 39
