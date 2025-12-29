@@ -1387,6 +1387,18 @@ mod rsa {
 	}
 }
 
+fn big_from_openssl_bignum(n: &openssl::bn::BigNumRef) -> BigUint {
+	let v = n.to_vec();
+	BigUint::from_bytes_be(&v)
+}
+
+fn generate_rsa_openssl(bits: u32) -> rsa::RSA {
+	let pair = openssl::rsa::Rsa::generate_with_e(bits, &openssl::bn::BigNum::from_u32(3).unwrap()).unwrap();
+	let p = big_from_openssl_bignum(pair.p().unwrap());
+	let q = big_from_openssl_bignum(pair.q().unwrap());
+	rsa::RSA::from_primes(p, q)
+}
+
 fn main() {
 	{ // Set 1 Challenge 1
 		let num = bytes_from_hex("49276d206b696c6c696e6720796f757220627261696e206c696b65206120706f69736f6e6f7573206d757368726f6f6d");
@@ -2494,6 +2506,12 @@ fn main() {
 		assert_eq!(msg, dec);
 
 		println!("Set 5 Challenge 39: RSA {} -> {} -> {}", &msg, &enc, &dec);
+		assert_eq!(msg, dec);
+
+		let pair3 = generate_rsa_openssl(1024);
+		let msg = BigUint::from_bytes_be(&bytes_from_str("Hello, World!"));
+		let enc = pair3.encrypt(&msg);
+		let dec = pair3.decrypt(&enc);
 		assert_eq!(msg, dec);
 	}
 }
