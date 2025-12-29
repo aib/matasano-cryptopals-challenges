@@ -1357,7 +1357,7 @@ mod rsa {
 
 	pub struct RSA {
 		private: Option<Key>,
-		public: Option<Key>,
+		pub public: Option<Key>,
 	}
 
 	impl RSA {
@@ -2513,5 +2513,39 @@ fn main() {
 		let enc = pair3.encrypt(&msg);
 		let dec = pair3.decrypt(&enc);
 		assert_eq!(msg, dec);
+	}
+
+	{ // Set 5 Challenge 40
+		let plaintext = BigUint::from_bytes_be(&bytes_from_str("Men with both roots and wings"));
+
+		let pair0 = generate_rsa_openssl(1024);
+		let pair1 = generate_rsa_openssl(1024);
+		let pair2 = generate_rsa_openssl(1024);
+
+		let c_0 = pair0.encrypt(&plaintext);
+		let c_1 = pair1.encrypt(&plaintext);
+		let c_2 = pair2.encrypt(&plaintext);
+
+		// pt^3 ≡ c_0 (mod n_0)
+		// pt^3 ≡ c_1 (mod n_1)
+		// pt^3 ≡ c_2 (mod n_2)
+
+		let (_, n_0) = pair0.public.unwrap();
+		let (_, n_1) = pair1.public.unwrap();
+		let (_, n_2) = pair2.public.unwrap();
+
+		let m_s_0 = &n_1 * &n_2;
+		let m_s_1 = &n_0 * &n_2;
+		let m_s_2 = &n_0 * &n_1;
+
+		let result_cubed = (
+			(c_0 * &m_s_0 * invmod(&m_s_0, &n_0)) +
+			(c_1 * &m_s_1 * invmod(&m_s_1, &n_1)) +
+			(c_2 * &m_s_2 * invmod(&m_s_2, &n_2))
+		) % (&n_0 * &n_1 * &n_2);
+		let result = result_cubed.nth_root(3);
+
+		println!("Set 5 Challenge 40: {}", bytes_to_string(&result.to_bytes_be()));
+		assert_eq!(plaintext, result);
 	}
 }
