@@ -2548,4 +2548,53 @@ fn main() {
 		println!("Set 5 Challenge 40: {}", bytes_to_string(&result.to_bytes_be()));
 		assert_eq!(plaintext, result);
 	}
+
+	{ // Set 6 Challenge 41
+		struct OnceDecrypter {
+			rsa: rsa::RSA,
+			already_decrypted: HashSet<Vec<u8>>,
+		}
+		impl OnceDecrypter {
+			pub fn with_rsa(rsa: rsa::RSA) -> OnceDecrypter {
+				Self {
+					rsa,
+					already_decrypted: HashSet::new(),
+				}
+			}
+
+			pub fn encrypt(&mut self, plaintext: &BigUint) -> BigUint {
+				self.rsa.encrypt(plaintext)
+			}
+
+			pub fn decrypt(&mut self, ciphertext: &BigUint) -> Option<BigUint> {
+				let first_time = self.already_decrypted.insert(sha256(&ciphertext.to_bytes_be()));
+				if first_time {
+					Some(self.rsa.decrypt(ciphertext))
+				} else {
+					None
+				}
+			}
+		}
+
+		let pair = generate_rsa_openssl(1024);
+		let pubkey = pair.public.clone().unwrap();
+		let mut od = OnceDecrypter::with_rsa(pair);
+
+		let msg = BigUint::from_bytes_be(&bytes_from_str("{\n  time: 1356304276,\n  social: '555-55-5555',\n}"));
+		let ciphertext = od.encrypt(&msg);
+
+		let decrypted1 = od.decrypt(&ciphertext);
+		assert_eq!(Some(&msg), decrypted1.as_ref());
+		let decrypted2 = od.decrypt(&ciphertext);
+		assert_eq!(None, decrypted2);
+
+		let (e, n) = pubkey;
+		let s = big(42);
+		let c_prime = (s.modpow(&e, &n) * ciphertext) % &n;
+		let p_prime = od.decrypt(&c_prime).unwrap();
+		let p = (p_prime * invmod(&s, &n)) % &n;
+
+		println!("Set 6 Challenge 41: {}", bytes_to_safe_string(&p.to_bytes_be()));
+		assert_eq!(&msg, &p);
+	}
 }
