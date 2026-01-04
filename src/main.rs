@@ -1309,6 +1309,14 @@ fn big(val: u32) -> BigUint {
 	BigUint::ZERO + val
 }
 
+fn big_to_be_bits(big: &BigUint, bits: usize) -> Vec<u8> {
+	let byte_count: usize = (bits - 1).div_ceil(8).try_into().unwrap();
+	let big_bytes = big.to_bytes_be();
+	let mut block = vec![0; byte_count - big_bytes.len()];
+	block.extend(big_bytes);
+	block.to_owned()
+}
+
 fn egcd(a: &BigUint, b: &BigUint) -> (BigUint, BigInt, BigInt) {
 	let (
 		(mut a, mut b),
@@ -1386,17 +1394,17 @@ mod rsa {
 		}
 
 		pub fn encrypt_bytes(&self, bs: &[u8]) -> Vec<u8> {
-			let encrypted = self.encrypt(&BigUint::from_bytes_be(bs)).to_bytes_be();
-			let mut block = vec![0; bs.len() - encrypted.len()];
-			block.extend(encrypted);
-			block.to_owned()
+			super::big_to_be_bits(
+				&self.encrypt(&BigUint::from_bytes_be(bs)),
+				bs.len() * 8,
+			)
 		}
 
 		pub fn decrypt_bytes(&self, bs: &[u8]) -> Vec<u8> {
-			let decrypted = self.decrypt(&BigUint::from_bytes_be(bs)).to_bytes_be();
-			let mut block = vec![0; bs.len() - decrypted.len()];
-			block.extend(decrypted);
-			block.to_owned()
+			super::big_to_be_bits(
+				&self.decrypt(&BigUint::from_bytes_be(bs)),
+				bs.len() * 8,
+			)
 		}
 
 		pub const SHA256_T: [u8; 19] = [0x30, 0x31, 0x30, 0x0d, 0x06, 0x09, 0x60, 0x86, 0x48, 0x01, 0x65, 0x03, 0x04, 0x02, 0x01, 0x05, 0x00, 0x04, 0x20];
@@ -2642,7 +2650,7 @@ fn main() {
 
 	{ // RSA signature
 		use openssl::sign::{Signer, Verifier};
-		let keypair = openssl::rsa::Rsa::generate(3072).unwrap();
+		let keypair = openssl::rsa::Rsa::generate(2048).unwrap();
 		let openssl_pkey = openssl::pkey::PKey::from_rsa(keypair.clone()).unwrap();
 		let rsa = rsa::RSA::from_keypair(
 			(big_from_openssl_bignum(keypair.d()), big_from_openssl_bignum(keypair.n())),
@@ -2651,7 +2659,7 @@ fn main() {
 		let data = b"Hello, World!";
 
 		{
-			let signature = rsa.sign_sha256(3072, data);
+			let signature = rsa.sign_sha256(2048, data);
 			let mut openssl_verifier = Verifier::new(openssl::hash::MessageDigest::sha256(), &openssl_pkey).unwrap();
 			openssl_verifier.update(data).unwrap();
 			assert!(openssl_verifier.verify(&signature).unwrap());
@@ -2661,16 +2669,16 @@ fn main() {
 			let mut openssl_signer = Signer::new(openssl::hash::MessageDigest::sha256(), &openssl_pkey).unwrap();
 			openssl_signer.update(data).unwrap();
 			let signature = openssl_signer.sign_to_vec().unwrap();
-			assert!(rsa.verify_sha256(3072, &signature, data));
-			for i in [0, 1, 2, 10, 20, 30, 349, 350, 351, 383] {
+			assert!(rsa.verify_sha256(2048, &signature, data));
+			for i in [0, 1, 2, 10, 20, 30, 223, 224, 255] {
 				let mut bad_signature = signature.clone();
 				bad_signature[i] ^= 1;
-				assert!(!rsa.verify_sha256(3072, &bad_signature, data));
+				assert!(!rsa.verify_sha256(2048, &bad_signature, data));
 			}
 			for i in [1, 3, 5] {
 				let mut bad_data = data.clone();
 				bad_data[i] ^= 1;
-				assert!(!rsa.verify_sha256(3072, &signature, &bad_data));
+				assert!(!rsa.verify_sha256(2048, &signature, &bad_data));
 			}
 		}
 	}
