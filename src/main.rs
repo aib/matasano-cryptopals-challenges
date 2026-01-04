@@ -1442,8 +1442,8 @@ fn big_from_openssl_bignum(n: &openssl::bn::BigNumRef) -> BigUint {
 	BigUint::from_bytes_be(&v)
 }
 
-fn generate_rsa_openssl(bits: u32) -> rsa::RSA {
-	let pair = openssl::rsa::Rsa::generate_with_e(bits, &openssl::bn::BigNum::from_u32(3).unwrap()).unwrap();
+fn generate_rsa_openssl(bits: usize) -> rsa::RSA {
+	let pair = openssl::rsa::Rsa::generate_with_e(bits.try_into().unwrap(), &openssl::bn::BigNum::from_u32(3).unwrap()).unwrap();
 	let p = big_from_openssl_bignum(pair.p().unwrap());
 	let q = big_from_openssl_bignum(pair.q().unwrap());
 	rsa::RSA::from_primes(p, q)
@@ -2681,5 +2681,59 @@ fn main() {
 				assert!(!rsa.verify_sha256(2048, &signature, &bad_data));
 			}
 		}
+	}
+
+	{ // Set 6 Challenge 42
+		let rsa_bits: usize = 2048; // Cannot forge SHA-256 in 1024 bits as we wouldn't have enough garbage bytes at the end
+		let rsa = generate_rsa_openssl(rsa_bits);
+
+		fn bad_verify_sha256(rsa: &rsa::RSA, _modbits: usize, signature: &[u8], data: &[u8]) -> bool {
+			//let block_size: usize = (modbits - 1).div_ceil(8).try_into().unwrap();
+			//let padding_size = block_size - rsa::RSA::SHA256_T.len() - 32 - 3;
+			let mut sig_iter = rsa.encrypt_bytes(signature).into_iter().peekable();
+			if !sig_iter.by_ref().take(1).eq([0x00u8]) { return false; }
+			if !sig_iter.by_ref().take(1).eq([0x01u8]) { return false; }
+			//if !sig_iter.by_ref().take(padding_size).eq(vec![0xFFu8; padding_size]) { return false; }
+			while sig_iter.by_ref().next_if(|b| *b == 0xFF).is_some() {}
+			if !sig_iter.by_ref().take(1).eq([0x00u8]) { return false; }
+			if !sig_iter.by_ref().take(rsa::RSA::SHA256_T.len()).eq(rsa::RSA::SHA256_T) { return false; }
+			if !sig_iter.by_ref().take(32).eq(sha256(data)) { return false; }
+			//sig_iter.next().is_none()
+			true
+		}
+
+		{ // Check bad_verify works with bad signature
+			let rsa = generate_rsa_openssl(1024);
+			let msg = b"hi mom";
+			let signature = rsa.sign_sha256(1024, msg);
+
+			let mut bad_signature_enc = rsa.encrypt_bytes(&signature);
+			bad_signature_enc.push(0x42);
+			let bad_signature = rsa.decrypt_bytes(&bad_signature_enc);
+			assert!(!rsa.verify_sha256(1024, &bad_signature, msg));
+			assert!(bad_verify_sha256(&rsa, 1024, &bad_signature, msg));
+		}
+
+		let msg = b"hi mom";
+		let padding_size = 10; //(rsa_bits / 8) - rsa::RSA::SHA256_T.len() - 32 - 3;
+		let mut forged_signature_dec = Vec::with_capacity(rsa_bits / 8);
+		forged_signature_dec.push(0x00);
+		forged_signature_dec.push(0x01);
+		forged_signature_dec.extend(std::iter::repeat(0xFF).take(padding_size));
+		forged_signature_dec.push(0x00);
+		forged_signature_dec.extend(rsa::RSA::SHA256_T);
+		forged_signature_dec.extend(&sha256(msg));
+
+		forged_signature_dec.resize(forged_signature_dec.capacity(), 0x00);
+
+		let forged_root3 = BigUint::from_bytes_be(&forged_signature_dec).cbrt() + big(1);
+		let forged_cube = &forged_root3 * &forged_root3 * &forged_root3;
+
+		let forged_block = big_to_be_bits(&forged_cube, rsa_bits);
+		let sig_len = 3 + padding_size + rsa::RSA::SHA256_T.len() + 32;
+		assert_eq!(forged_signature_dec[0..sig_len], forged_block[0..sig_len]);
+
+		let verify_result = bad_verify_sha256(&rsa, rsa_bits, &big_to_be_bits(&forged_root3, rsa_bits), msg);
+		println!("Set 6 Challenge 42: {} verify={}", bytes_to_string(msg), verify_result);
 	}
 }
