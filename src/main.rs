@@ -1384,6 +1384,48 @@ mod rsa {
 				.expect("No private key");
 			m.modpow(d, n)
 		}
+
+		pub fn encrypt_bytes(&self, bs: &[u8]) -> Vec<u8> {
+			let encrypted = self.encrypt(&BigUint::from_bytes_be(bs)).to_bytes_be();
+			let mut block = vec![0; bs.len() - encrypted.len()];
+			block.extend(encrypted);
+			block.to_owned()
+		}
+
+		pub fn decrypt_bytes(&self, bs: &[u8]) -> Vec<u8> {
+			let decrypted = self.decrypt(&BigUint::from_bytes_be(bs)).to_bytes_be();
+			let mut block = vec![0; bs.len() - decrypted.len()];
+			block.extend(decrypted);
+			block.to_owned()
+		}
+
+		pub const SHA256_T: [u8; 19] = [0x30, 0x31, 0x30, 0x0d, 0x06, 0x09, 0x60, 0x86, 0x48, 0x01, 0x65, 0x03, 0x04, 0x02, 0x01, 0x05, 0x00, 0x04, 0x20];
+
+		pub fn sign_sha256(&self, modbits: u32, data: &[u8]) -> Vec<u8> {
+			let block_size: usize = (modbits - 1).div_ceil(8).try_into().unwrap();
+			let padding_size = block_size - Self::SHA256_T.len() - 32 - 3;
+			let mut block = Vec::<u8>::with_capacity(block_size);
+			block.push(0x00);
+			block.push(0x01);
+			block.extend(std::iter::repeat(0xFF).take(padding_size));
+			block.push(0x00);
+			block.extend(&Self::SHA256_T);
+			block.extend(super::sha256(data));
+			self.decrypt_bytes(&block)
+		}
+
+		pub fn verify_sha256(&self, modbits: u32, signature: &[u8], data: &[u8]) -> bool {
+			let block_size: usize = (modbits - 1).div_ceil(8).try_into().unwrap();
+			let padding_size = block_size - Self::SHA256_T.len() - 32 - 3;
+			let mut sig_iter = self.encrypt_bytes(signature).into_iter();
+			if !sig_iter.by_ref().take(1).eq([0x00u8]) { return false; }
+			if !sig_iter.by_ref().take(1).eq([0x01u8]) { return false; }
+			if !sig_iter.by_ref().take(padding_size).eq(vec![0xFFu8; padding_size]) { return false; }
+			if !sig_iter.by_ref().take(1).eq([0x00u8]) { return false; }
+			if !sig_iter.by_ref().take(Self::SHA256_T.len()).eq(Self::SHA256_T) { return false; }
+			if !sig_iter.by_ref().take(32).eq(super::sha256(data)) { return false; }
+			sig_iter.next().is_none()
+		}
 	}
 }
 
@@ -2596,5 +2638,40 @@ fn main() {
 
 		println!("Set 6 Challenge 41: {}", bytes_to_safe_string(&p.to_bytes_be()));
 		assert_eq!(&msg, &p);
+	}
+
+	{ // RSA signature
+		use openssl::sign::{Signer, Verifier};
+		let keypair = openssl::rsa::Rsa::generate(3072).unwrap();
+		let openssl_pkey = openssl::pkey::PKey::from_rsa(keypair.clone()).unwrap();
+		let rsa = rsa::RSA::from_keypair(
+			(big_from_openssl_bignum(keypair.d()), big_from_openssl_bignum(keypair.n())),
+			(big_from_openssl_bignum(keypair.e()), big_from_openssl_bignum(keypair.n())),
+		);
+		let data = b"Hello, World!";
+
+		{
+			let signature = rsa.sign_sha256(3072, data);
+			let mut openssl_verifier = Verifier::new(openssl::hash::MessageDigest::sha256(), &openssl_pkey).unwrap();
+			openssl_verifier.update(data).unwrap();
+			assert!(openssl_verifier.verify(&signature).unwrap());
+		}
+
+		{
+			let mut openssl_signer = Signer::new(openssl::hash::MessageDigest::sha256(), &openssl_pkey).unwrap();
+			openssl_signer.update(data).unwrap();
+			let signature = openssl_signer.sign_to_vec().unwrap();
+			assert!(rsa.verify_sha256(3072, &signature, data));
+			for i in [0, 1, 2, 10, 20, 30, 349, 350, 351, 383] {
+				let mut bad_signature = signature.clone();
+				bad_signature[i] ^= 1;
+				assert!(!rsa.verify_sha256(3072, &bad_signature, data));
+			}
+			for i in [1, 3, 5] {
+				let mut bad_data = data.clone();
+				bad_data[i] ^= 1;
+				assert!(!rsa.verify_sha256(3072, &signature, &bad_data));
+			}
+		}
 	}
 }
